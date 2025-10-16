@@ -1,0 +1,285 @@
+import { Action, ActionPanel, List, showToast, Toast, confirmAlert, Alert, Icon } from "@raycast/api";
+import { useState, useEffect } from "react";
+import { getRootDomain } from "./utils/domain-helpers";
+import { buildApiUrl, callAdGuardAPI, getDnsServerId, DNSServerSettings, QueryLogResponse } from "./utils/adguard-api";
+
+interface BlockedDomain {
+  domain: string;
+  blockedAt: string;
+  attempts: number;
+  filterRule?: string;
+}
+
+interface DomainGroup {
+  rootDomain: string;
+  subdomains: string[];
+  totalAttempts: number;
+  lastSeen: string;
+  filterRule?: string;
+}
+
+export default function GetQueryLog() {
+  const [isLoading, setIsLoading] = useState(true);
+  const [blockedDomains, setBlockedDomains] = useState<BlockedDomain[]>([]);
+  const [minutes, setMinutes] = useState(10);
+
+  useEffect(() => {
+    loadBlockedDomains();
+  }, [minutes]);
+
+  async function loadBlockedDomains() {
+    setIsLoading(true);
+    try {
+      const now = Date.now();
+      const timeFromMillis = now - minutes * 60 * 1000;
+      const timeToMillis = now;
+
+      const url = buildApiUrl(
+        `/oapi/v1/query_log?time_from_millis=${timeFromMillis}&time_to_millis=${timeToMillis}&limit=200`,
+      );
+
+      const response = await callAdGuardAPI(url);
+
+      if (!response.ok) {
+        throw new Error(`AdGuard API error: ${response.status}`);
+      }
+
+      const data = (await response.json()) as QueryLogResponse;
+
+      // Filter for blocked domains
+      const blockedItems = data.items.filter(
+        (item) =>
+          item.filtering_info?.filtering_status === "REQUEST_BLOCKED" ||
+          item.filtering_info?.filtering_status === "RESPONSE_BLOCKED",
+      );
+
+      // Group by domain to show unique domains
+      const uniqueDomains = new Map<string, { count: number; lastSeen: string; rule?: string }>();
+
+      for (const item of blockedItems) {
+        const existing = uniqueDomains.get(item.domain);
+        if (existing) {
+          existing.count++;
+          if (new Date(item.time_iso) > new Date(existing.lastSeen)) {
+            existing.lastSeen = item.time_iso;
+            existing.rule = item.filtering_info?.filter_rule;
+          }
+        } else {
+          uniqueDomains.set(item.domain, {
+            count: 1,
+            lastSeen: item.time_iso,
+            rule: item.filtering_info?.filter_rule,
+          });
+        }
+      }
+
+      const domains: BlockedDomain[] = Array.from(uniqueDomains.entries()).map(([domain, info]) => ({
+        domain,
+        blockedAt: info.lastSeen,
+        attempts: info.count,
+        filterRule: info.rule,
+      }));
+
+      if (domains.length === 0) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "No blocked domains found",
+          message: `No blocked domains in the last ${minutes} minutes`,
+        });
+      }
+
+      setBlockedDomains(domains);
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Error loading blocked domains",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function unblockDomain(domain: string, unblockRoot: boolean = false) {
+    try {
+      const domainToUnblock = unblockRoot ? getRootDomain(domain) : domain;
+      const isActuallyRoot = domain === getRootDomain(domain);
+
+      const confirmed = await confirmAlert({
+        title: `Unblock ${domainToUnblock}?`,
+        message: unblockRoot && !isActuallyRoot
+          ? `This will unblock the root domain ${domainToUnblock} (which includes ${domain} and all other subdomains)`
+          : `This will unblock ${domainToUnblock} and all its subdomains`,
+        primaryAction: {
+          title: "Unblock",
+          style: Alert.ActionStyle.Default,
+        },
+      });
+
+      if (!confirmed) {
+        return;
+      }
+
+      await showToast({
+        style: Toast.Style.Animated,
+        title: "Unblocking domain...",
+      });
+
+      const dnsServerId = getDnsServerId();
+      const getUrl = buildApiUrl(`/oapi/v1/dns_servers/${dnsServerId}`);
+      const getResponse = await callAdGuardAPI(getUrl);
+
+      if (!getResponse.ok) {
+        throw new Error(`Failed to get DNS server: ${getResponse.status}`);
+      }
+
+      const dnsServer = (await getResponse.json()) as { settings: DNSServerSettings };
+      const whitelistRule = `@@||${domainToUnblock}^`;
+
+      // Check if already whitelisted
+      if (dnsServer.settings.user_rules_settings.rules.includes(whitelistRule)) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Already whitelisted",
+          message: `${domainToUnblock} is already in the whitelist`,
+        });
+        return;
+      }
+
+      const updatedRules = [...dnsServer.settings.user_rules_settings.rules, whitelistRule];
+
+      const putUrl = buildApiUrl(`/oapi/v1/dns_servers/${dnsServerId}/settings`);
+      const putResponse = await callAdGuardAPI(putUrl, {
+        method: "PUT",
+        body: JSON.stringify({
+          user_rules_settings: {
+            enabled: dnsServer.settings.user_rules_settings.enabled,
+            rules: updatedRules,
+          },
+        }),
+      });
+
+      if (!putResponse.ok) {
+        throw new Error(`Failed to update settings: ${putResponse.status}`);
+      }
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: `Unblocked ${domainToUnblock}`,
+        message: "Test your service to confirm it's working",
+      });
+
+      // Refresh the list after unblocking
+      await loadBlockedDomains();
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Error unblocking domain",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  // Sort domains by most recent
+  const sortedDomains = [...blockedDomains].sort(
+    (a, b) => new Date(b.blockedAt).getTime() - new Date(a.blockedAt).getTime(),
+  );
+
+  return (
+    <List
+      isLoading={isLoading}
+      searchBarPlaceholder="Search blocked domains..."
+      searchBarAccessory={
+        <List.Dropdown
+          tooltip="Time Window"
+          value={minutes.toString()}
+          onChange={(newValue) => setMinutes(parseInt(newValue) || 10)}
+        >
+          <List.Dropdown.Item title="Last 10 minutes" value="10" />
+          <List.Dropdown.Item title="Last 30 minutes" value="30" />
+          <List.Dropdown.Item title="Last 60 minutes" value="60" />
+          <List.Dropdown.Item title="Last 3 hours" value="180" />
+        </List.Dropdown>
+      }
+      actions={
+        <ActionPanel>
+          <Action
+            title="Refresh"
+            icon={Icon.ArrowClockwise}
+            shortcut={{ modifiers: ["cmd"], key: "r" }}
+            onAction={loadBlockedDomains}
+          />
+        </ActionPanel>
+      }
+    >
+      {blockedDomains.length === 0 && !isLoading ? (
+        <List.EmptyView
+          icon={Icon.Circle}
+          title="No Blocked Domains"
+          description={`No blocked domains found in the last ${minutes} minutes. Try expanding the time window or check back later.`}
+        />
+      ) : (
+        sortedDomains.map((blocked) => {
+          const rootDomain = getRootDomain(blocked.domain);
+          const isRoot = blocked.domain === rootDomain;
+
+          return (
+            <List.Item
+              key={blocked.domain}
+              title={blocked.domain}
+              subtitle={!isRoot ? `Root: ${rootDomain}` : undefined}
+              accessories={[
+                { text: `${blocked.attempts} attempt${blocked.attempts !== 1 ? "s" : ""}` },
+                { text: getTimeAgo(blocked.blockedAt) },
+              ]}
+              icon={isRoot ? Icon.Globe : Icon.Link}
+              actions={
+                <ActionPanel>
+                  {!isRoot && (
+                    <Action
+                      title={`Unblock Root (${rootDomain})`}
+                      icon={Icon.Globe}
+                      style={Action.Style.Regular}
+                      onAction={() => unblockDomain(blocked.domain, true)}
+                    />
+                  )}
+                  <Action
+                    title={`Unblock ${blocked.domain}`}
+                    icon={Icon.CheckCircle}
+                    style={Action.Style.Regular}
+                    onAction={() => unblockDomain(blocked.domain, false)}
+                  />
+                  <ActionPanel.Section>
+                    <Action
+                      title="Refresh"
+                      icon={Icon.ArrowClockwise}
+                      shortcut={{ modifiers: ["cmd"], key: "r" }}
+                      onAction={loadBlockedDomains}
+                    />
+                  </ActionPanel.Section>
+                </ActionPanel>
+              }
+            />
+          );
+        })
+      )}
+    </List>
+  );
+}
+
+function getTimeAgo(isoString: string): string {
+  const date = new Date(isoString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+
+  if (diffMins < 1) return "just now";
+  if (diffMins === 1) return "1 min ago";
+  if (diffMins < 60) return `${diffMins} mins ago`;
+
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours === 1) return "1 hr ago";
+  if (diffHours < 24) return `${diffHours} hrs ago`;
+
+  return date.toLocaleDateString();
+}
