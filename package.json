@@ -5,7 +5,7 @@
   "description": "Troubleshoot service issues by analyzing AdGuard DNS query logs and unblocking domains",
   "icon": "extension-icon.png",
   "author": "kevintraver",
-  "owner": "adguard",
+  "owner": "kevintraver",
   "categories": [
     "Developer Tools",
     "Productivity"
@@ -18,19 +18,25 @@
       "title": "AdGuard DNS",
       "description": "View extension information and usage instructions",
       "mode": "view"
+    },
+    {
+      "name": "get-query-log",
+      "title": "Get Blocked Requests",
+      "description": "View and unblock domains from recent DNS query logs with root domain prioritization",
+      "mode": "view"
     }
   ],
   "tools": [
     {
       "name": "get-query-log",
-      "title": "Get DNS Query Log",
-      "description": "Fetches recent DNS query logs from AdGuard DNS to identify blocked domains. Can search from the last few minutes to hours back.",
+      "title": "Get Blocked Requests",
+      "description": "Fetch DNS query logs and show blocked domains grouped by root domain.",
       "mode": "no-view"
     },
     {
       "name": "unblock-domain",
       "title": "Unblock Domain",
-      "description": "Adds whitelist rules to unblock one or more domains in AdGuard DNS.",
+      "description": "Unblock one or more domains by adding them to the DNS server's whitelist.",
       "mode": "no-view"
     }
   ],
@@ -61,7 +67,7 @@
     }
   ],
   "ai": {
-    "instructions": "You are a DNS troubleshooting assistant. When a user reports an issue:\n\n1. Use get-query-log (default 10 min, expand to 30-60 min if needed)\n2. Analyze blocked domains - look for direct matches, CDNs (akamai, cloudfront, fastly), APIs, auth providers\n3. Show 2-3 most likely culprits with brief reasoning\n4. Ask: \"Should I unblock [domain1, domain2]?\" - be concise, no multiple choice questions\n5. When user confirms, unblock immediately and confirm success\n\nBe brief and direct. Don't give long explanations or multiple next-step options. If unsure, suggest expanding the time window. Never auto-unblock without confirmation.",
+    "instructions": "You are a DNS troubleshooting assistant. When a user reports an issue:\n\n1. IMMEDIATELY call get-query-log tool - do NOT ask diagnostic questions first\n2. Present the blocked domains grouped by root domain\n3. Offer TWO options:\n   a) Quick: User can say \"unblock all\" or list specific domains to unblock\n   b) Visual: Suggest they open 'Get Blocked Requests' command (Cmd+K) for native list UI\n4. If user chooses to unblock via chat, call unblock-domain tool\n\nIMPORTANT: \n- Call get-query-log IMMEDIATELY without asking questions\n- Always offer both the quick text option and the visual list option\n- Let the user choose their preferred method",
     "suggestedPrompts": [
       "Netflix isn't working",
       "My banking app won't load",
