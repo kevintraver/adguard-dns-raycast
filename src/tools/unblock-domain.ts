@@ -1,7 +1,13 @@
+import { Action, Tool } from "@raycast/api";
 import { buildApiUrl, callAdGuardAPI, getDnsServerId, DNSServerSettings } from "../utils/adguard-api";
+import { getRootDomain } from "../utils/domain-helpers";
 
 type Input = {
-  /** Array of domains to unblock (e.g., ["netflix.com", "nflxvideo.net"]). Multiple domains can be unblocked at once. */
+  /**
+   * Array of domains to unblock (e.g., ["netflix.com", "nflxvideo.net"]).
+   * Multiple domains can be unblocked at once. Do not include AdGuard DNS syntax
+   * like @@|| or ^ - just provide the plain domain names.
+   */
   domains: string[];
 };
 
@@ -11,6 +17,9 @@ type Input = {
  * This tool creates whitelist rules using AdGuard DNS syntax (@@||domain.com^)
  * and updates the DNS server settings. It checks for existing whitelist rules
  * to avoid duplicates and reports which domains were successfully unblocked.
+ *
+ * IMPORTANT: A native confirmation dialog will be shown to the user before
+ * unblocking any domains. The tool will only execute if the user confirms.
  */
 export default async function tool(input: Input): Promise<string> {
   try {
@@ -33,16 +42,31 @@ export default async function tool(input: Input): Promise<string> {
     const currentSettings = dnsServer.settings;
 
     // Create whitelist rules using AdGuard DNS syntax
+    // Default to root domains for broader coverage
     const newRules: string[] = [];
     const alreadyWhitelisted: string[] = [];
+    const processedDomains = new Set<string>(); // Avoid duplicates
 
     for (const domain of input.domains) {
       // Sanitize domain: remove any AdGuard syntax characters
-      const cleanDomain = domain.replace(/^@@\|\|/, "").replace(/\^+$/, "").trim();
-      const whitelistRule = `@@||${cleanDomain}^`;
+      const cleanDomain = domain
+        .replace(/^@@\|\|/, "")
+        .replace(/\^+$/, "")
+        .trim();
+
+      // Extract root domain (e.g., www.peacocktv.com → peacocktv.com)
+      const rootDomain = getRootDomain(cleanDomain);
+
+      // Skip if we've already processed this root domain
+      if (processedDomains.has(rootDomain)) {
+        continue;
+      }
+      processedDomains.add(rootDomain);
+
+      const whitelistRule = `@@||${rootDomain}^`;
 
       if (currentSettings.user_rules_settings.rules.includes(whitelistRule)) {
-        alreadyWhitelisted.push(cleanDomain);
+        alreadyWhitelisted.push(rootDomain);
       } else {
         newRules.push(whitelistRule);
       }
@@ -50,7 +74,8 @@ export default async function tool(input: Input): Promise<string> {
 
     // If all domains are already whitelisted, return early
     if (newRules.length === 0) {
-      return `All ${input.domains.length} domain(s) are already whitelisted:\n${input.domains.map((d) => `• ${d}`).join("\n")}\n\nNo changes were made.`;
+      const count = alreadyWhitelisted.length;
+      return `All ${count} root domain${count !== 1 ? "s are" : " is"} already whitelisted:\n${alreadyWhitelisted.map((d) => `• ${d}`).join("\n")}\n\nNo changes needed.`;
     }
 
     // Add new rules to existing rules
@@ -74,20 +99,20 @@ export default async function tool(input: Input): Promise<string> {
     }
 
     // Build success message
-    const newDomains = input.domains.filter((d) => !alreadyWhitelisted.includes(d));
+    const unblockedRootDomains = Array.from(processedDomains).filter((d) => !alreadyWhitelisted.includes(d));
 
-    let result = `✅ Successfully unblocked ${newDomains.length} domain(s):\n\n`;
-    result += newDomains.map((d) => `• ${d}`).join("\n");
+    let result = `✅ Unblocked ${unblockedRootDomains.length} root domain${unblockedRootDomains.length !== 1 ? "s" : ""}`;
+
+    if (unblockedRootDomains.length > 0) {
+      result += `:\n${unblockedRootDomains.map((d) => `• ${d}`).join("\n")}`;
+    }
 
     if (alreadyWhitelisted.length > 0) {
-      result += `\n\n⚠️ Already whitelisted (${alreadyWhitelisted.length}):\n`;
+      result += `\n\n⚠️ ${alreadyWhitelisted.length} already whitelisted:\n`;
       result += alreadyWhitelisted.map((d) => `• ${d}`).join("\n");
     }
 
-    result += `\n\nWhitelist rules added: ${newRules.length}`;
-    result += `\nTotal whitelist rules: ${updatedRules.length}`;
-
-    result += `\n\n💡 Suggestion: Test your service now to see if the issue is resolved.`;
+    result += `\n\nTest your service to confirm it's working.`;
 
     return result;
   } catch (error) {
@@ -97,3 +122,49 @@ export default async function tool(input: Input): Promise<string> {
     return `❌ Error unblocking domains: ${String(error)}`;
   }
 }
+
+/**
+ * Native confirmation dialog shown before unblocking domains.
+ * This keeps the user in control of DNS whitelist modifications.
+ * Shows root domains that will be unblocked (which may differ from subdomains provided).
+ */
+export const confirmation: Tool.Confirmation<Input> = async (input) => {
+  if (!input.domains || input.domains.length === 0) {
+    return undefined; // Skip confirmation for invalid input
+  }
+
+  // Extract unique root domains
+  const rootDomains = new Set<string>();
+  const domainMap = new Map<string, string[]>(); // root -> subdomains
+
+  for (const domain of input.domains) {
+    const cleanDomain = domain
+      .replace(/^@@\|\|/, "")
+      .replace(/\^+$/, "")
+      .trim();
+    const rootDomain = getRootDomain(cleanDomain);
+    rootDomains.add(rootDomain);
+
+    if (!domainMap.has(rootDomain)) {
+      domainMap.set(rootDomain, []);
+    }
+    if (cleanDomain !== rootDomain) {
+      domainMap.get(rootDomain)!.push(cleanDomain);
+    }
+  }
+
+  const rootArray = Array.from(rootDomains);
+
+  return {
+    message: `Unblock ${rootArray.length} root domain${rootArray.length > 1 ? "s" : ""}?`,
+    info: rootArray.map((root) => {
+      const subs = domainMap.get(root) || [];
+      const value = subs.length > 0 ? `${root} (includes ${subs.join(", ")})` : root;
+      return {
+        name: "Will unblock",
+        value,
+      };
+    }),
+    style: Action.Style.Regular,
+  };
+};
