@@ -76,11 +76,9 @@ async function refreshAccessToken(): Promise<string> {
   const response = await fetch(`${ADGUARD_API_BASE}/oapi/v1/oauth_token`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: JSON.stringify({
-      refresh_token: prefs.adguardRefreshToken,
-    }),
+    body: `refresh_token=${encodeURIComponent(prefs.adguardRefreshToken)}`,
   });
 
   if (!response.ok) {
