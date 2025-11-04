@@ -27,7 +27,7 @@ export default async function getQueryLog(input: Input): Promise<string> {
     const timeToMillis = now;
 
     const url = buildApiUrl(
-      `/oapi/v1/query_log?time_from_millis=${timeFromMillis}&time_to_millis=${timeToMillis}&limit=200`,
+      `/oapi/v1/query_log?time_from_millis=${timeFromMillis}&time_to_millis=${timeToMillis}&limit=1000`,
     );
 
     const response = await callAdGuardAPI(url);
