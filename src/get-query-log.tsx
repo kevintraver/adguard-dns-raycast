@@ -107,9 +107,10 @@ export default function GetQueryLog() {
 
       const confirmed = await confirmAlert({
         title: `Unblock ${domainToUnblock}?`,
-        message: unblockRoot && !isActuallyRoot
-          ? `This will unblock the root domain ${domainToUnblock} (which includes ${domain} and all other subdomains)`
-          : `This will unblock ${domainToUnblock} and all its subdomains`,
+        message:
+          unblockRoot && !isActuallyRoot
+            ? `This will unblock the root domain ${domainToUnblock} (which includes ${domain} and all other subdomains)`
+            : `This will unblock ${domainToUnblock} and all its subdomains`,
         primaryAction: {
           title: "Unblock",
           style: Alert.ActionStyle.Default,

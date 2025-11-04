@@ -1,6 +1,8 @@
-import { getPreferenceValues } from "@raycast/api";
+import { getPreferenceValues, LocalStorage } from "@raycast/api";
 
 const ADGUARD_API_BASE = "https://api.adguard-dns.io";
+const STORAGE_KEY_ACCESS_TOKEN = "adguard_access_token";
+const STORAGE_KEY_REFRESH_TOKEN = "adguard_refresh_token";
 
 interface Preferences {
   adguardApiToken: string;
@@ -10,6 +12,7 @@ interface Preferences {
 
 // In-memory token storage (persists for extension lifetime)
 let currentAccessToken: string | null = null;
+let currentRefreshToken: string | null = null;
 
 export interface QueryLogItem {
   domain: string;
@@ -53,32 +56,64 @@ function getPrefs(): Preferences {
 }
 
 /**
- * Initialize access token from preferences
+ * Initialize access token from LocalStorage or preferences
  */
-function initializeToken(): string {
+async function initializeToken(): Promise<string> {
   if (!currentAccessToken) {
-    const prefs = getPrefs();
-    currentAccessToken = prefs.adguardApiToken;
+    // Try to load from LocalStorage first (persists between sessions)
+    const storedToken = await LocalStorage.getItem<string>(STORAGE_KEY_ACCESS_TOKEN);
+    if (storedToken) {
+      currentAccessToken = storedToken;
+    } else {
+      // Fall back to preferences for initial setup
+      const prefs = getPrefs();
+      currentAccessToken = prefs.adguardApiToken;
+      // Save to LocalStorage for future use
+      await LocalStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, currentAccessToken);
+    }
   }
   return currentAccessToken;
+}
+
+/**
+ * Get refresh token from LocalStorage or preferences
+ */
+async function getRefreshToken(): Promise<string> {
+  if (!currentRefreshToken) {
+    // Try to load from LocalStorage first
+    const storedToken = await LocalStorage.getItem<string>(STORAGE_KEY_REFRESH_TOKEN);
+    if (storedToken) {
+      currentRefreshToken = storedToken;
+    } else {
+      // Fall back to preferences
+      const prefs = getPrefs();
+      currentRefreshToken = prefs.adguardRefreshToken;
+      // Save to LocalStorage for future use
+      if (currentRefreshToken) {
+        await LocalStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, currentRefreshToken);
+      }
+    }
+  }
+
+  if (!currentRefreshToken) {
+    throw new Error("AdGuard refresh token is not configured. Please check extension preferences.");
+  }
+
+  return currentRefreshToken;
 }
 
 /**
  * Refreshes the access token using the refresh token
  */
 async function refreshAccessToken(): Promise<string> {
-  const prefs = getPrefs();
-
-  if (!prefs.adguardRefreshToken) {
-    throw new Error("AdGuard refresh token is not configured. Please check extension preferences.");
-  }
+  const refreshToken = await getRefreshToken();
 
   const response = await fetch(`${ADGUARD_API_BASE}/oapi/v1/oauth_token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: `refresh_token=${encodeURIComponent(prefs.adguardRefreshToken)}`,
+    body: `refresh_token=${encodeURIComponent(refreshToken)}`,
   });
 
   if (!response.ok) {
@@ -91,7 +126,17 @@ async function refreshAccessToken(): Promise<string> {
   // Update in-memory token
   currentAccessToken = data.access_token;
 
-  console.log("AdGuard API token refreshed successfully");
+  // Save new access token to LocalStorage (persists between sessions)
+  await LocalStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, data.access_token);
+
+  // If a new refresh token was provided, save it too
+  if (data.refresh_token) {
+    currentRefreshToken = data.refresh_token;
+    await LocalStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, data.refresh_token);
+    console.log("AdGuard API tokens refreshed successfully (including new refresh token)");
+  } else {
+    console.log("AdGuard API access token refreshed successfully");
+  }
 
   return data.access_token;
 }
@@ -100,7 +145,7 @@ async function refreshAccessToken(): Promise<string> {
  * Makes an API call with automatic token refresh on 401
  */
 export async function callAdGuardAPI(url: string, options: RequestInit = {}): Promise<Response> {
-  const token = initializeToken();
+  const token = await initializeToken();
 
   if (!token) {
     throw new Error("AdGuard API token is not configured. Please check extension preferences.");
@@ -155,4 +200,15 @@ export function getDnsServerId(): string {
  */
 export function buildApiUrl(path: string): string {
   return `${ADGUARD_API_BASE}${path}`;
+}
+
+/**
+ * Clear stored tokens (useful for troubleshooting or when switching accounts)
+ */
+export async function clearStoredTokens(): Promise<void> {
+  await LocalStorage.removeItem(STORAGE_KEY_ACCESS_TOKEN);
+  await LocalStorage.removeItem(STORAGE_KEY_REFRESH_TOKEN);
+  currentAccessToken = null;
+  currentRefreshToken = null;
+  console.log("Cleared stored AdGuard tokens");
 }
