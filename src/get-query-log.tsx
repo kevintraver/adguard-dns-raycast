@@ -36,7 +36,7 @@ interface DomainGroup {
 export default function GetQueryLog() {
   const [isLoading, setIsLoading] = useState(true)
   const [blockedDomains, setBlockedDomains] = useState<BlockedDomain[]>([])
-  const [minutes, setMinutes] = useState(5)
+  const [minutes, setMinutes] = useState(1)
 
   useEffect(() => {
     loadBlockedDomains()
@@ -222,7 +222,7 @@ export default function GetQueryLog() {
         <List.Dropdown
           tooltip="Time Window"
           value={minutes.toString()}
-          onChange={(newValue) => setMinutes(parseInt(newValue) || 5)}
+          onChange={(newValue) => setMinutes(parseInt(newValue) || 1)}
         >
           <List.Dropdown.Item title="Last 1 minute" value="1" />
           <List.Dropdown.Item title="Last 5 minutes" value="5" />
