@@ -62,12 +62,42 @@ export default function GetQueryLog() {
 
       const data = (await response.json()) as QueryLogResponse
 
+      // Fetch current whitelist to filter out unblocked domains
+      const dnsServerId = getDnsServerId()
+      const getUrl = buildApiUrl(`/oapi/v1/dns_servers/${dnsServerId}`)
+      const getResponse = await callAdGuardAPI(getUrl)
+
+      if (!getResponse.ok) {
+        throw new Error(`Failed to get DNS server: ${getResponse.status}`)
+      }
+
+      const dnsServer = (await getResponse.json()) as {
+        settings: DNSServerSettings
+      }
+
+      // Extract whitelisted domains from rules (@@||domain.com^)
+      const whitelistedDomains = new Set<string>()
+      for (const rule of dnsServer.settings.user_rules_settings.rules) {
+        const match = rule.match(/^@@\|\|(.+?)\^$/)
+        if (match) {
+          whitelistedDomains.add(match[1])
+        }
+      }
+
       // Filter for blocked domains
-      const blockedItems = data.items.filter(
-        (item) =>
+      const blockedItems = data.items.filter((item) => {
+        const isBlocked =
           item.filtering_info?.filtering_status === 'REQUEST_BLOCKED' ||
           item.filtering_info?.filtering_status === 'RESPONSE_BLOCKED'
-      )
+
+        if (!isBlocked) return false
+
+        // Check if this domain or its root is whitelisted
+        const domain = item.domain
+        const rootDomain = getRootDomain(domain)
+
+        return !whitelistedDomains.has(domain) && !whitelistedDomains.has(rootDomain)
+      })
 
       // Group by domain to show unique domains
       const uniqueDomains = new Map<
@@ -198,8 +228,8 @@ export default function GetQueryLog() {
         message: "Test your service to confirm it's working"
       })
 
-      // Refresh the list after unblocking
-      await loadBlockedDomains()
+      // Immediately remove this domain from the UI
+      setBlockedDomains((prev) => prev.filter((blocked) => blocked.domain !== domain))
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
