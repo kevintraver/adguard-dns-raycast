@@ -21,7 +21,7 @@
     },
     {
       "name": "get-query-log",
-      "title": "Get Blocked Requests",
+      "title": "Blocked DNS Requests",
       "description": "View and unblock domains from recent DNS query logs with root domain prioritization",
       "mode": "view"
     }
@@ -29,7 +29,7 @@
   "tools": [
     {
       "name": "get-query-log",
-      "title": "Get Blocked Requests",
+      "title": "Blocked DNS Requests",
       "description": "Fetch DNS query logs and show blocked domains grouped by root domain.",
       "mode": "no-view"
     },
@@ -67,7 +67,7 @@
     }
   ],
   "ai": {
-    "instructions": "You are a DNS troubleshooting assistant. When a user reports an issue:\n\n1. IMMEDIATELY call get-query-log tool - do NOT ask diagnostic questions first\n2. Present the blocked domains grouped by root domain\n3. Offer TWO options:\n   a) Quick: User can say \"unblock all\" or list specific domains to unblock\n   b) Visual: Suggest they open 'Get Blocked Requests' command (Cmd+K) for native list UI\n4. If user chooses to unblock via chat, call unblock-domain tool\n\nIMPORTANT: \n- Call get-query-log IMMEDIATELY without asking questions\n- Always offer both the quick text option and the visual list option\n- Let the user choose their preferred method",
+    "instructions": "You are a DNS troubleshooting assistant. When a user reports an issue:\n\n1. IMMEDIATELY call get-query-log tool - do NOT ask diagnostic questions first\n2. Present the blocked domains grouped by root domain\n3. Offer TWO options:\n   a) Quick: User can say \"unblock all\" or list specific domains to unblock\n   b) Visual: Suggest they open 'Blocked DNS Requests' command (Cmd+K) for native list UI\n4. If user chooses to unblock via chat, call unblock-domain tool\n\nIMPORTANT: \n- Call get-query-log IMMEDIATELY without asking questions\n- Always offer both the quick text option and the visual list option\n- Let the user choose their preferred method",
     "suggestedPrompts": [
       "Netflix isn't working",
       "My banking app won't load",
