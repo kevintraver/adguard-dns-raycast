@@ -6,7 +6,9 @@ import {
   Toast,
   confirmAlert,
   Alert,
-  Icon
+  Icon,
+  open,
+  closeMainWindow
 } from '@raycast/api'
 import { useState, useEffect } from 'react'
 import { getRootDomain } from './utils/domain-helpers'
@@ -262,6 +264,16 @@ export default function GetQueryLog() {
       actions={
         <ActionPanel>
           <Action
+            title="Open Blocked Queries in Browser"
+            icon={Icon.Globe}
+            shortcut={{ modifiers: ['cmd'], key: 'o' }}
+            onAction={async () => {
+              await closeMainWindow();
+              const url = "https://adguard-dns.io/en/dashboard/statistics/query?limit=20&statuses%5B0%5D=REQUEST_BLOCKED&statuses%5B1%5D=RESPONSE_BLOCKED";
+              await open(url);
+            }}
+          />
+          <Action
             title="Refresh"
             icon={Icon.ArrowClockwise}
             shortcut={{ modifiers: ['cmd'], key: 'r' }}
@@ -308,6 +320,16 @@ export default function GetQueryLog() {
                     icon={Icon.CheckCircle}
                     style={Action.Style.Regular}
                     onAction={() => unblockDomain(blocked.domain, false)}
+                  />
+                  <Action
+                    title="Open Blocked Queries in Browser"
+                    icon={Icon.Globe}
+                    shortcut={{ modifiers: ['cmd'], key: 'o' }}
+                    onAction={async () => {
+                      await closeMainWindow();
+                      const url = "https://adguard-dns.io/en/dashboard/statistics/query?limit=20&statuses%5B0%5D=REQUEST_BLOCKED&statuses%5B1%5D=RESPONSE_BLOCKED";
+                      await open(url);
+                    }}
                   />
                   <ActionPanel.Section>
                     <Action
