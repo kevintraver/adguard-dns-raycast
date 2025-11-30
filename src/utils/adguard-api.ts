@@ -3,6 +3,8 @@ import { getPreferenceValues, LocalStorage } from "@raycast/api";
 const ADGUARD_API_BASE = "https://api.adguard-dns.io";
 const STORAGE_KEY_ACCESS_TOKEN = "adguard_access_token";
 const STORAGE_KEY_REFRESH_TOKEN = "adguard_refresh_token";
+const STORAGE_KEY_DEVICE_CACHE = "adguard_device_cache";
+const DEVICE_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 interface Preferences {
   adguardApiToken: string;
@@ -41,6 +43,17 @@ export interface DNSServerSettings {
     rules: string[];
     rules_count: number;
   };
+}
+
+export interface Device {
+  id: string;
+  name: string;
+  dns_server_id?: string;
+}
+
+interface DeviceCache {
+  devices: Record<string, string>; // Map of device ID to device name
+  timestamp: number;
 }
 
 interface TokenResponse {
@@ -200,6 +213,55 @@ export function getDnsServerId(): string {
  */
 export function buildApiUrl(path: string): string {
   return `${ADGUARD_API_BASE}${path}`;
+}
+
+/**
+ * Fetch devices from AdGuard API with caching
+ */
+export async function getDeviceMap(): Promise<Record<string, string>> {
+  // Try to get from cache first
+  const cachedData = await LocalStorage.getItem<string>(STORAGE_KEY_DEVICE_CACHE);
+
+  if (cachedData) {
+    try {
+      const cache = JSON.parse(cachedData) as DeviceCache;
+      const now = Date.now();
+
+      // Check if cache is still valid
+      if (now - cache.timestamp < DEVICE_CACHE_DURATION) {
+        return cache.devices;
+      }
+    } catch (error) {
+      console.error("Failed to parse device cache:", error);
+    }
+  }
+
+  // Cache is invalid or doesn't exist, fetch from API
+  const url = buildApiUrl("/oapi/v1/devices");
+  const response = await callAdGuardAPI(url);
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch devices: ${response.status}`);
+  }
+
+  // API returns an array of Device objects
+  const devices = (await response.json()) as Device[];
+
+  // Build device map (ID -> name)
+  const deviceMap: Record<string, string> = {};
+  for (const device of devices) {
+    deviceMap[device.id] = device.name;
+  }
+
+  // Save to cache
+  const cache: DeviceCache = {
+    devices: deviceMap,
+    timestamp: Date.now(),
+  };
+
+  await LocalStorage.setItem(STORAGE_KEY_DEVICE_CACHE, JSON.stringify(cache));
+
+  return deviceMap;
 }
 
 /**
