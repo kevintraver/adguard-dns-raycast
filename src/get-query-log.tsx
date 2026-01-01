@@ -29,14 +29,6 @@ interface BlockedDomain {
   deviceName?: string;
 }
 
-interface DomainGroup {
-  rootDomain: string;
-  subdomains: string[];
-  totalAttempts: number;
-  lastSeen: string;
-  filterRule?: string;
-}
-
 export default function GetQueryLog() {
   const [isLoading, setIsLoading] = useState(true);
   const [blockedDomains, setBlockedDomains] = useState<BlockedDomain[]>([]);
@@ -44,7 +36,6 @@ export default function GetQueryLog() {
 
   useEffect(() => {
     loadBlockedDomains();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minutes]);
 
   async function loadBlockedDomains() {

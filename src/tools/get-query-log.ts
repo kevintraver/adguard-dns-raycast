@@ -4,7 +4,7 @@
  */
 
 import { buildApiUrl, callAdGuardAPI, QueryLogResponse } from "../utils/adguard-api";
-import { getRootDomain, groupByRootDomain } from "../utils/domain-helpers";
+import { getRootDomain } from "../utils/domain-helpers";
 
 type Input = {
   /** Time window in minutes to search (default: 10) */

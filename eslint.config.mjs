@@ -1,3 +1,5 @@
-import raycastConfig from "@raycast/eslint-config";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const raycastConfig = require("@raycast/eslint-config");
 
-export default [...raycastConfig];
+export default raycastConfig.flat(Infinity);
