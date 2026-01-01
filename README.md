@@ -10,6 +10,17 @@ A Raycast AI extension that helps troubleshoot service issues by analyzing AdGua
 - ⚡ **Multi-Domain Support** - Unblock multiple domains in a single operation
 - 🔄 **Automatic Token Refresh** - Handles AdGuard DNS API authentication automatically
 
+## Screenshots
+
+![Blocked DNS Requests List](metadata/adguard-dns-1.png)
+*Visual list view showing blocked domains with device names and attempt counts*
+
+![AI Chat - Blocked Domain Analysis](metadata/adguard-dns-2.png)
+*AI-powered troubleshooting identifies blocked domains causing service issues*
+
+![Unblock Confirmation Dialog](metadata/adguard-dns-3.png)
+*Native confirmation dialog before unblocking domains*
+
 ## Prerequisites
 
 - Raycast Pro subscription (required for AI extensions)
