@@ -63,42 +63,47 @@ function getPrefs() {
 }
 
 /**
- * Initialize access token from LocalStorage or preferences
+ * Initialize access token. Preference value wins if it differs from the cached one
+ * (user updated it in Raycast preferences).
  */
 async function initializeToken(): Promise<string> {
-  if (!currentAccessToken) {
-    // Try to load from LocalStorage first (persists between sessions)
-    const storedToken = await LocalStorage.getItem<string>(STORAGE_KEY_ACCESS_TOKEN);
-    if (storedToken) {
-      currentAccessToken = storedToken;
-    } else {
-      // Fall back to preferences for initial setup
-      const prefs = getPrefs();
-      currentAccessToken = prefs.adguardApiToken as string;
-      // Save to LocalStorage for future use
+  const prefs = getPrefs();
+  const prefToken = (prefs.adguardApiToken as string | undefined)?.trim();
+  const storedToken = await LocalStorage.getItem<string>(STORAGE_KEY_ACCESS_TOKEN);
+
+  if (prefToken && prefToken !== storedToken) {
+    currentAccessToken = prefToken;
+    await LocalStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, prefToken);
+  } else if (!currentAccessToken) {
+    currentAccessToken = storedToken ?? prefToken ?? null;
+    if (currentAccessToken && !storedToken) {
       await LocalStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, currentAccessToken);
     }
   }
+
   return currentAccessToken as string;
 }
 
 /**
- * Get refresh token from LocalStorage or preferences
+ * Get refresh token. Preference value wins if it differs from the cached one —
+ * if the user updates the refresh token, also invalidate the cached access token
+ * since it was issued against the old refresh token.
  */
 async function getRefreshToken(): Promise<string> {
-  if (!currentRefreshToken) {
-    // Try to load from LocalStorage first
-    const storedToken = await LocalStorage.getItem<string>(STORAGE_KEY_REFRESH_TOKEN);
-    if (storedToken) {
-      currentRefreshToken = storedToken;
-    } else {
-      // Fall back to preferences
-      const prefs = getPrefs();
-      currentRefreshToken = prefs.adguardRefreshToken;
-      // Save to LocalStorage for future use
-      if (currentRefreshToken) {
-        await LocalStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, currentRefreshToken);
-      }
+  const prefs = getPrefs();
+  const prefToken = (prefs.adguardRefreshToken as string | undefined)?.trim();
+  const storedToken = await LocalStorage.getItem<string>(STORAGE_KEY_REFRESH_TOKEN);
+
+  if (prefToken && prefToken !== storedToken) {
+    currentRefreshToken = prefToken;
+    await LocalStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, prefToken);
+    // The cached access token belongs to the previous refresh token — drop it.
+    currentAccessToken = null;
+    await LocalStorage.removeItem(STORAGE_KEY_ACCESS_TOKEN);
+  } else if (!currentRefreshToken) {
+    currentRefreshToken = storedToken ?? prefToken ?? null;
+    if (currentRefreshToken && !storedToken) {
+      await LocalStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, currentRefreshToken);
     }
   }
 
@@ -115,12 +120,17 @@ async function getRefreshToken(): Promise<string> {
 async function refreshAccessToken(): Promise<string> {
   const refreshToken = await getRefreshToken();
 
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
+
   const response = await fetch(`${ADGUARD_API_BASE}/oapi/v1/oauth_token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: `refresh_token=${encodeURIComponent(refreshToken)}`,
+    body: body.toString(),
   });
 
   if (!response.ok) {
