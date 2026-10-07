@@ -1,14 +1,8 @@
 import { getPreferenceValues, LocalStorage } from "@raycast/api";
 
 const ADGUARD_API_BASE = "https://api.adguard-dns.io";
-const STORAGE_KEY_ACCESS_TOKEN = "adguard_access_token";
-const STORAGE_KEY_REFRESH_TOKEN = "adguard_refresh_token";
 const STORAGE_KEY_DEVICE_CACHE = "adguard_device_cache";
 const DEVICE_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-
-// In-memory token storage (persists for extension lifetime)
-let currentAccessToken: string | null = null;
-let currentRefreshToken: string | null = null;
 
 export interface QueryLogItem {
   domain: string;
@@ -50,11 +44,6 @@ interface DeviceCache {
   timestamp: number;
 }
 
-interface TokenResponse {
-  access_token: string;
-  refresh_token?: string;
-}
-
 /**
  * Get preferences values
  */
@@ -63,140 +52,23 @@ function getPrefs() {
 }
 
 /**
- * Initialize access token. Preference value wins if it differs from the cached one
- * (user updated it in Raycast preferences).
- */
-async function initializeToken(): Promise<string> {
-  const prefs = getPrefs();
-  const prefToken = (prefs.adguardApiToken as string | undefined)?.trim();
-  const storedToken = await LocalStorage.getItem<string>(STORAGE_KEY_ACCESS_TOKEN);
-
-  if (prefToken && prefToken !== storedToken) {
-    currentAccessToken = prefToken;
-    await LocalStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, prefToken);
-  } else if (!currentAccessToken) {
-    currentAccessToken = storedToken ?? prefToken ?? null;
-    if (currentAccessToken && !storedToken) {
-      await LocalStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, currentAccessToken);
-    }
-  }
-
-  return currentAccessToken as string;
-}
-
-/**
- * Get refresh token. Preference value wins if it differs from the cached one —
- * if the user updates the refresh token, also invalidate the cached access token
- * since it was issued against the old refresh token.
- */
-async function getRefreshToken(): Promise<string> {
-  const prefs = getPrefs();
-  const prefToken = (prefs.adguardRefreshToken as string | undefined)?.trim();
-  const storedToken = await LocalStorage.getItem<string>(STORAGE_KEY_REFRESH_TOKEN);
-
-  if (prefToken && prefToken !== storedToken) {
-    currentRefreshToken = prefToken;
-    await LocalStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, prefToken);
-    // The cached access token belongs to the previous refresh token — drop it.
-    currentAccessToken = null;
-    await LocalStorage.removeItem(STORAGE_KEY_ACCESS_TOKEN);
-  } else if (!currentRefreshToken) {
-    currentRefreshToken = storedToken ?? prefToken ?? null;
-    if (currentRefreshToken && !storedToken) {
-      await LocalStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, currentRefreshToken);
-    }
-  }
-
-  if (!currentRefreshToken) {
-    throw new Error("AdGuard refresh token is not configured. Please check extension preferences.");
-  }
-
-  return currentRefreshToken;
-}
-
-/**
- * Refreshes the access token using the refresh token
- */
-async function refreshAccessToken(): Promise<string> {
-  const refreshToken = await getRefreshToken();
-
-  const body = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-  });
-
-  const response = await fetch(`${ADGUARD_API_BASE}/oapi/v1/oauth_token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: body.toString(),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to refresh token: ${response.status} ${errorText}`);
-  }
-
-  const data = (await response.json()) as TokenResponse;
-
-  // Update in-memory token
-  currentAccessToken = data.access_token;
-
-  // Save new access token to LocalStorage (persists between sessions)
-  await LocalStorage.setItem(STORAGE_KEY_ACCESS_TOKEN, data.access_token);
-
-  // If a new refresh token was provided, save it too
-  if (data.refresh_token) {
-    currentRefreshToken = data.refresh_token;
-    await LocalStorage.setItem(STORAGE_KEY_REFRESH_TOKEN, data.refresh_token);
-    console.log("AdGuard API tokens refreshed successfully (including new refresh token)");
-  } else {
-    console.log("AdGuard API access token refreshed successfully");
-  }
-
-  return data.access_token;
-}
-
-/**
- * Makes an API call with automatic token refresh on 401
+ * Makes an authenticated API call using the API key from preferences
  */
 export async function callAdGuardAPI(url: string, options: RequestInit = {}): Promise<Response> {
-  const token = await initializeToken();
+  const apiKey = (getPrefs().adguardApiKey as string | undefined)?.trim();
 
-  if (!token) {
-    throw new Error("AdGuard API token is not configured. Please check extension preferences.");
+  if (!apiKey) {
+    throw new Error("AdGuard API key is not configured. Please check extension preferences.");
   }
 
-  // Add authorization header
-  const requestOptions: RequestInit = {
+  return fetch(url, {
     ...options,
     headers: {
       "Content-Type": "application/json",
       ...options.headers,
-      Authorization: `Bearer ${token}`,
+      Authorization: `ApiKey ${apiKey}`,
     },
-  };
-
-  // Try the request
-  let response = await fetch(url, requestOptions);
-
-  // If unauthorized, refresh token and retry once
-  if (response.status === 401) {
-    console.log("Token expired, refreshing...");
-
-    const newToken = await refreshAccessToken();
-
-    // Retry with new token
-    requestOptions.headers = {
-      ...requestOptions.headers,
-      Authorization: `Bearer ${newToken}`,
-    };
-
-    response = await fetch(url, requestOptions);
-  }
-
-  return response;
+  });
 }
 
 /**
@@ -266,15 +138,4 @@ export async function getDeviceMap(): Promise<Record<string, string>> {
   await LocalStorage.setItem(STORAGE_KEY_DEVICE_CACHE, JSON.stringify(cache));
 
   return deviceMap;
-}
-
-/**
- * Clear stored tokens (useful for troubleshooting or when switching accounts)
- */
-export async function clearStoredTokens(): Promise<void> {
-  await LocalStorage.removeItem(STORAGE_KEY_ACCESS_TOKEN);
-  await LocalStorage.removeItem(STORAGE_KEY_REFRESH_TOKEN);
-  currentAccessToken = null;
-  currentRefreshToken = null;
-  console.log("Cleared stored AdGuard tokens");
 }

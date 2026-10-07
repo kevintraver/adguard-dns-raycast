@@ -35,8 +35,7 @@ Adds whitelist rules to unblock domains (requires confirmation).
 ## Setup
 
 Make sure you've configured your AdGuard DNS credentials in the extension preferences:
-- AdGuard API Token
-- AdGuard Refresh Token
+- AdGuard API Key
 - DNS Server ID
 
 ---

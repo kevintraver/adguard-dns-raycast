@@ -38,22 +38,15 @@ The extension follows Raycast's AI tools pattern with four main components:
    - `get-query-log.ts` - Fetch DNS query logs
    - `unblock-domain.ts` - Unblock domains with native confirmation
 3. **Utils** (`src/utils/`) - Shared utilities
-   - `adguard-api.ts` - API client with token management
+   - `adguard-api.ts` - API client (API key auth)
    - `domain-helpers.ts` - Domain parsing and root extraction
 
 ### API Integration Pattern
 
 The extension uses a centralized API client in `src/utils/adguard-api.ts` that:
-- Manages authentication tokens in-memory during extension lifetime
-- Automatically refreshes access tokens when they expire (401 responses)
+- Authenticates with an API key from preferences (`Authorization: ApiKey <key>`)
 - Provides typed interfaces for AdGuard DNS API responses
 - Exports helper functions: `callAdGuardAPI()`, `buildApiUrl()`, `getDnsServerId()`
-
-**Token refresh flow:**
-1. First request uses access token from preferences
-2. On 401 response, automatically calls refresh endpoint with refresh token
-3. Updates in-memory token and retries request
-4. All subsequent requests use the refreshed token
 
 ### Tool Implementation
 
@@ -140,13 +133,11 @@ The extension's AI behavior is defined in `package.json` under the `ai` field:
 ## AdGuard DNS API
 
 ### Authentication
-The extension requires three credentials configured in Raycast preferences:
-- Access token (expires, refreshed automatically)
-- Refresh token (long-lived, used to get new access tokens)
+The extension requires two credentials configured in Raycast preferences:
+- API key (created in AdGuard DNS dashboard → User preferences → API keys; does not expire)
 - DNS Server ID (identifies which DNS server to query/modify)
 
 ### Key Endpoints
-- `POST /oapi/v1/oauth_token` - Refresh access token
 - `GET /oapi/v1/query_log` - Fetch DNS query logs with time window and limit
 - `GET /oapi/v1/dns_servers/{id}` - Get DNS server settings
 - `PUT /oapi/v1/dns_servers/{id}/settings` - Update user rules (whitelist/blacklist)
@@ -167,8 +158,7 @@ Domains are unblocked using AdGuard DNS syntax: `@@||domain.com^`
 ## Key Patterns & File References
 
 ### API Client Pattern (`src/utils/adguard-api.ts`)
-- Token management: In-memory access token, auto-refresh on 401
-- `callAdGuardAPI(url, options?)` - Makes authenticated requests with auto-retry
+- `callAdGuardAPI(url, options?)` - Makes requests authenticated with the API key
 - `buildApiUrl(path)` - Constructs full API URLs
 - `getDnsServerId()` - Gets server ID from preferences
 - All API calls go through this centralized client
@@ -196,7 +186,7 @@ Domains are unblocked using AdGuard DNS syntax: `@@||domain.com^`
 ### Setup
 1. Run `npm run dev` to load in Raycast with hot reload
 2. Configure credentials in Raycast Settings → Extensions → AdGuard DNS:
-   - Access Token, Refresh Token, DNS Server ID (see README.md for obtaining these)
+   - API Key, DNS Server ID (see README.md for obtaining these)
 
 ### Testing AI Tools
 Open Raycast AI and use `@adguard-dns` mention:
@@ -218,4 +208,3 @@ Open Raycast AI and use `@adguard-dns` mention:
 - View commands show native Raycast UI
 - Both paths use root domain logic
 - Native confirmation always shown before unblocking
-- Token refresh happens automatically on 401 errors

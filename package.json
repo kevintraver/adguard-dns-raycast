@@ -41,20 +41,12 @@
   ],
   "preferences": [
     {
-      "name": "adguardApiToken",
+      "name": "adguardApiKey",
       "type": "password",
       "required": true,
-      "title": "AdGuard API Token",
-      "description": "Your AdGuard DNS access token",
-      "placeholder": "Enter your access token"
-    },
-    {
-      "name": "adguardRefreshToken",
-      "type": "password",
-      "required": true,
-      "title": "AdGuard Refresh Token",
-      "description": "Your AdGuard DNS refresh token",
-      "placeholder": "Enter your refresh token"
+      "title": "AdGuard API Key",
+      "description": "API key from AdGuard DNS dashboard → User preferences → API keys",
+      "placeholder": "Enter your API key"
     },
     {
       "name": "adguardDnsServerId",

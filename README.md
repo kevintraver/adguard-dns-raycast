@@ -44,28 +44,16 @@ npm install
 
 ### 3. Get AdGuard DNS Credentials
 
-You need three credentials from AdGuard DNS:
+You need two credentials from AdGuard DNS:
 
-#### Get Access and Refresh Tokens
+#### Create an API Key
 
-```bash
-curl -X POST https://api.adguard-dns.io/oapi/v1/oauth_token \
-  -H "Content-Type: application/json" \
-  -d '{"username": "your_email@example.com", "password": "your_password"}'
-```
-
-This returns:
-```json
-{
-  "access_token": "your_access_token_here",
-  "refresh_token": "your_refresh_token_here"
-}
-```
+In the [AdGuard DNS dashboard](https://adguard-dns.io/dashboard/), go to **User preferences → API keys** and generate a new key. API keys don't expire, so there's nothing to refresh.
 
 #### Get DNS Server ID
 
 ```bash
-curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+curl -H "Authorization: ApiKey YOUR_API_KEY" \
   https://api.adguard-dns.io/oapi/v1/dns_servers
 ```
 
@@ -82,8 +70,7 @@ npm run dev
 2. This will open Raycast and import the extension
 3. Go to Raycast Settings → Extensions → AdGuard DNS Helper
 4. Fill in the required preferences:
-   - **AdGuard API Token**: Your access token
-   - **AdGuard Refresh Token**: Your refresh token
+   - **AdGuard API Key**: Your API key
    - **DNS Server ID**: Your DNS server ID
 
 ## Usage
@@ -205,13 +192,13 @@ The extension provides detailed instructions to Raycast AI on how to troubleshoo
 
 ## Troubleshooting
 
-### "Token is not configured" error
+### "API key is not configured" error
 
-Make sure you've filled in all three preferences in Raycast Settings → Extensions → AdGuard DNS Helper.
+Make sure you've filled in both preferences in Raycast Settings → Extensions → AdGuard DNS Helper.
 
-### "Token expired" errors
+### "Unauthorized" (401) errors
 
-The extension automatically refreshes tokens. Ensure your refresh token is correct.
+Your API key is invalid or was revoked. Generate a new one in the AdGuard DNS dashboard under User preferences → API keys.
 
 ### "DNS server not found" (404)
 

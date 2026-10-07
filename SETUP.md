@@ -32,22 +32,16 @@ See `assets/ICON_README.md` for detailed instructions on creating the icon.
 
 ### 2. Get AdGuard DNS Credentials
 
-You need three pieces of information:
+You need two pieces of information:
 
-#### Access Token and Refresh Token
+#### API Key
 
-```bash
-curl -X POST https://api.adguard-dns.io/oapi/v1/oauth_token \
-  -H "Content-Type: application/json" \
-  -d '{"username": "your_email@example.com", "password": "your_password"}'
-```
-
-Save the `access_token` and `refresh_token` from the response.
+In the AdGuard DNS dashboard, go to **User preferences → API keys** and generate a new key.
 
 #### DNS Server ID
 
 ```bash
-curl -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+curl -H "Authorization: ApiKey YOUR_API_KEY" \
   https://api.adguard-dns.io/oapi/v1/dns_servers
 ```
 
@@ -77,9 +71,8 @@ This will:
 
 In Raycast:
 1. Go to Settings → Extensions → AdGuard DNS Helper
-2. Fill in the three required fields:
-   - AdGuard API Token
-   - AdGuard Refresh Token
+2. Fill in the two required fields:
+   - AdGuard API Key
    - DNS Server ID
 
 ### 4. Test the Extension
@@ -178,13 +171,13 @@ npm run publish
 
 This error appears when the extension icon is missing. Add `assets/extension-icon.png` to resolve.
 
-### "Token is not configured"
+### "API key is not configured"
 
-Make sure all three preferences are filled in Raycast Settings → Extensions → AdGuard DNS Helper.
+Make sure both preferences are filled in Raycast Settings → Extensions → AdGuard DNS Helper.
 
-### "Token expired"
+### "Unauthorized" (401)
 
-The extension automatically refreshes tokens. Verify your refresh token is correct.
+Your API key is invalid or was revoked. Generate a new one in the AdGuard DNS dashboard.
 
 ### "DNS server not found" (404)
 

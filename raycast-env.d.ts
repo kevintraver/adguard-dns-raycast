@@ -8,10 +8,8 @@
 /* eslint-disable @typescript-eslint/ban-types */
 
 type ExtensionPreferences = {
-  /** AdGuard API Token - Your AdGuard DNS access token */
-  "adguardApiToken": string,
-  /** AdGuard Refresh Token - Your AdGuard DNS refresh token */
-  "adguardRefreshToken": string,
+  /** AdGuard API Key - API key from AdGuard DNS dashboard → User preferences → API keys */
+  "adguardApiKey": string,
   /** DNS Server ID - Your AdGuard DNS server ID */
   "adguardDnsServerId": string
 }
