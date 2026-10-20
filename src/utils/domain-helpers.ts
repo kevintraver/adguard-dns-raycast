@@ -1,5 +1,5 @@
 /**
- * Domain parsing and manipulation utilities
+ * Domain parsing and manipulation utilities. Pure, so tests can import this file from plain Node.
  */
 
 /**
@@ -26,36 +26,38 @@ export function getRootDomain(domain: string): string {
   return parts.slice(-2).join(".");
 }
 
+const LABEL = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
+
 /**
- * Checks if a domain is already a root domain (no subdomain)
+ * Extracts a hostname from a bare hostname, a URL, or an AdGuard rule (`@@||x.com^`, `||x.com^`).
+ * Returns undefined when the input is not a dotted hostname.
  */
-export function isRootDomain(domain: string): boolean {
-  return getRootDomain(domain) === domain;
+export function parseHostname(input: string): string | undefined {
+  const hostname = input
+    .trim()
+    .toLowerCase()
+    .replace(/^@@/, "")
+    .replace(/^\|\|/, "")
+    .replace(/\^.*$/, "")
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
+    .replace(/[/?#].*$/, "")
+    .replace(/:\d+$/, "")
+    .replace(/\.$/, "");
+
+  const labels = hostname.split(".");
+  if (labels.length < 2 || !labels.every((label) => LABEL.test(label))) return undefined;
+  // An all-digit TLD means an IP address, whose "root" (e.g. "1.1") is not a domain anyone can allow.
+  if (/^\d+$/.test(labels[labels.length - 1])) return undefined;
+  return hostname;
 }
 
 /**
- * Groups blocked domains by their root domain
+ * True when `domain` or one of its parent domains has an allow rule. `@@||x^` covers every subdomain of x.
  */
-export interface GroupedDomain {
-  rootDomain: string;
-  subdomains: string[];
-  count: number;
-}
-
-export function groupByRootDomain(domains: string[]): GroupedDomain[] {
-  const grouped = new Map<string, Set<string>>();
-
-  for (const domain of domains) {
-    const root = getRootDomain(domain);
-    if (!grouped.has(root)) {
-      grouped.set(root, new Set());
-    }
-    grouped.get(root)!.add(domain);
+export function isCoveredByAllowRule(domain: string, allowed: ReadonlySet<string>): boolean {
+  const labels = domain.split(".");
+  for (let i = 0; i < labels.length - 1; i++) {
+    if (allowed.has(labels.slice(i).join("."))) return true;
   }
-
-  return Array.from(grouped.entries()).map(([rootDomain, subdomainSet]) => ({
-    rootDomain,
-    subdomains: Array.from(subdomainSet).sort(),
-    count: subdomainSet.size,
-  }));
+  return false;
 }

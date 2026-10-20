@@ -11,15 +11,9 @@ import {
   closeMainWindow,
 } from "@raycast/api";
 import { useState, useEffect } from "react";
-import { getRootDomain } from "./utils/domain-helpers";
-import {
-  buildApiUrl,
-  callAdGuardAPI,
-  getDnsServerId,
-  DNSServerSettings,
-  QueryLogResponse,
-  getDeviceMap,
-} from "./utils/adguard-api";
+import { getRootDomain, isCoveredByAllowRule } from "./utils/domain-helpers";
+import { buildApiUrl, callAdGuardAPI, QueryLogResponse, getDeviceMap } from "./utils/adguard-api";
+import { allowDomains, getAllowedDomains } from "./utils/user-rules";
 
 interface BlockedDomain {
   domain: string;
@@ -66,42 +60,14 @@ export default function GetQueryLog() {
 
       const data = (await response.json()) as QueryLogResponse;
 
-      // Fetch current whitelist to filter out unblocked domains
-      const dnsServerId = getDnsServerId();
-      const getUrl = buildApiUrl(`/oapi/v1/dns_servers/${dnsServerId}`);
-      const getResponse = await callAdGuardAPI(getUrl);
+      const allowedDomains = await getAllowedDomains();
 
-      if (!getResponse.ok) {
-        throw new Error(`Failed to get DNS server: ${getResponse.status}`);
-      }
-
-      const dnsServer = (await getResponse.json()) as {
-        settings: DNSServerSettings;
-      };
-
-      // Extract whitelisted domains from rules (@@||domain.com^)
-      const whitelistedDomains = new Set<string>();
-      for (const rule of dnsServer.settings.user_rules_settings.rules) {
-        const match = rule.match(/^@@\|\|(.+?)\^$/);
-        if (match) {
-          whitelistedDomains.add(match[1]);
-        }
-      }
-
-      // Filter for blocked domains
-      const blockedItems = data.items.filter((item) => {
-        const isBlocked =
-          item.filtering_info?.filtering_status === "REQUEST_BLOCKED" ||
-          item.filtering_info?.filtering_status === "RESPONSE_BLOCKED";
-
-        if (!isBlocked) return false;
-
-        // Check if this domain or its root is whitelisted
-        const domain = item.domain;
-        const rootDomain = getRootDomain(domain);
-
-        return !whitelistedDomains.has(domain) && !whitelistedDomains.has(rootDomain);
-      });
+      const blockedItems = data.items.filter(
+        (item) =>
+          (item.filtering_info?.filtering_status === "REQUEST_BLOCKED" ||
+            item.filtering_info?.filtering_status === "RESPONSE_BLOCKED") &&
+          !isCoveredByAllowRule(item.domain, allowedDomains),
+      );
 
       // Group by domain to show unique domains
       const uniqueDomains = new Map<string, { count: number; lastSeen: string; rule?: string; deviceId?: string }>();
@@ -179,44 +145,15 @@ export default function GetQueryLog() {
         title: "Unblocking domain...",
       });
 
-      const dnsServerId = getDnsServerId();
-      const getUrl = buildApiUrl(`/oapi/v1/dns_servers/${dnsServerId}`);
-      const getResponse = await callAdGuardAPI(getUrl);
+      const { added } = await allowDomains([domainToUnblock]);
 
-      if (!getResponse.ok) {
-        throw new Error(`Failed to get DNS server: ${getResponse.status}`);
-      }
-
-      const dnsServer = (await getResponse.json()) as {
-        settings: DNSServerSettings;
-      };
-      const whitelistRule = `@@||${domainToUnblock}^`;
-
-      // Check if already whitelisted
-      if (dnsServer.settings.user_rules_settings.rules.includes(whitelistRule)) {
+      if (added.length === 0) {
         await showToast({
           style: Toast.Style.Failure,
           title: "Already whitelisted",
           message: `${domainToUnblock} is already in the whitelist`,
         });
         return;
-      }
-
-      const updatedRules = [...dnsServer.settings.user_rules_settings.rules, whitelistRule];
-
-      const putUrl = buildApiUrl(`/oapi/v1/dns_servers/${dnsServerId}/settings`);
-      const putResponse = await callAdGuardAPI(putUrl, {
-        method: "PUT",
-        body: JSON.stringify({
-          user_rules_settings: {
-            enabled: dnsServer.settings.user_rules_settings.enabled,
-            rules: updatedRules,
-          },
-        }),
-      });
-
-      if (!putResponse.ok) {
-        throw new Error(`Failed to update settings: ${putResponse.status}`);
       }
 
       await showToast({

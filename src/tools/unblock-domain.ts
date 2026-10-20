@@ -1,6 +1,13 @@
 import { Action, Tool } from "@raycast/api";
-import { buildApiUrl, callAdGuardAPI, getDnsServerId, DNSServerSettings } from "../utils/adguard-api";
 import { getRootDomain } from "../utils/domain-helpers";
+import { allowDomains } from "../utils/user-rules";
+
+function stripRuleSyntax(domain: string): string {
+  return domain
+    .replace(/^@@\|\|/, "")
+    .replace(/\^+$/, "")
+    .trim();
+}
 
 type Input = {
   /**
@@ -27,85 +34,17 @@ export default async function tool(input: Input): Promise<string> {
       return "Error: No domains specified to unblock";
     }
 
-    const dnsServerId = getDnsServerId();
+    const { added: unblockedRootDomains, alreadyAllowed: alreadyWhitelisted } = await allowDomains(
+      input.domains.map((domain) => getRootDomain(stripRuleSyntax(domain))),
+    );
 
-    // First, get current DNS server settings
-    const getUrl = buildApiUrl(`/oapi/v1/dns_servers/${dnsServerId}`);
-    const getResponse = await callAdGuardAPI(getUrl);
-
-    if (!getResponse.ok) {
-      const errorText = await getResponse.text();
-      throw new Error(`Failed to get DNS server: ${getResponse.status} ${errorText}`);
-    }
-
-    const dnsServer = (await getResponse.json()) as { settings: DNSServerSettings };
-    const currentSettings = dnsServer.settings;
-
-    // Create whitelist rules using AdGuard DNS syntax
-    // Default to root domains for broader coverage
-    const newRules: string[] = [];
-    const alreadyWhitelisted: string[] = [];
-    const processedDomains = new Set<string>(); // Avoid duplicates
-
-    for (const domain of input.domains) {
-      // Sanitize domain: remove any AdGuard syntax characters
-      const cleanDomain = domain
-        .replace(/^@@\|\|/, "")
-        .replace(/\^+$/, "")
-        .trim();
-
-      // Extract root domain (e.g., www.peacocktv.com → peacocktv.com)
-      const rootDomain = getRootDomain(cleanDomain);
-
-      // Skip if we've already processed this root domain
-      if (processedDomains.has(rootDomain)) {
-        continue;
-      }
-      processedDomains.add(rootDomain);
-
-      const whitelistRule = `@@||${rootDomain}^`;
-
-      if (currentSettings.user_rules_settings.rules.includes(whitelistRule)) {
-        alreadyWhitelisted.push(rootDomain);
-      } else {
-        newRules.push(whitelistRule);
-      }
-    }
-
-    // If all domains are already whitelisted, return early
-    if (newRules.length === 0) {
+    if (unblockedRootDomains.length === 0) {
       const count = alreadyWhitelisted.length;
       return `All ${count} root domain${count !== 1 ? "s are" : " is"} already whitelisted:\n${alreadyWhitelisted.map((d) => `• ${d}`).join("\n")}\n\nNo changes needed.`;
     }
 
-    // Add new rules to existing rules
-    const updatedRules = [...currentSettings.user_rules_settings.rules, ...newRules];
-
-    // Update settings with new rules
-    const putUrl = buildApiUrl(`/oapi/v1/dns_servers/${dnsServerId}/settings`);
-    const putResponse = await callAdGuardAPI(putUrl, {
-      method: "PUT",
-      body: JSON.stringify({
-        user_rules_settings: {
-          enabled: currentSettings.user_rules_settings.enabled,
-          rules: updatedRules,
-        },
-      }),
-    });
-
-    if (!putResponse.ok) {
-      const errorText = await putResponse.text();
-      throw new Error(`Failed to update settings: ${putResponse.status} ${errorText}`);
-    }
-
-    // Build success message
-    const unblockedRootDomains = Array.from(processedDomains).filter((d) => !alreadyWhitelisted.includes(d));
-
     let result = `✅ Unblocked ${unblockedRootDomains.length} root domain${unblockedRootDomains.length !== 1 ? "s" : ""}`;
-
-    if (unblockedRootDomains.length > 0) {
-      result += `:\n${unblockedRootDomains.map((d) => `• ${d}`).join("\n")}`;
-    }
+    result += `:\n${unblockedRootDomains.map((d) => `• ${d}`).join("\n")}`;
 
     if (alreadyWhitelisted.length > 0) {
       result += `\n\n⚠️ ${alreadyWhitelisted.length} already whitelisted:\n`;
@@ -138,10 +77,7 @@ export const confirmation: Tool.Confirmation<Input> = async (input) => {
   const domainMap = new Map<string, string[]>(); // root -> subdomains
 
   for (const domain of input.domains) {
-    const cleanDomain = domain
-      .replace(/^@@\|\|/, "")
-      .replace(/\^+$/, "")
-      .trim();
+    const cleanDomain = stripRuleSyntax(domain);
     const rootDomain = getRootDomain(cleanDomain);
     rootDomains.add(rootDomain);
 

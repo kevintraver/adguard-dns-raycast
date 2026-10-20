@@ -3,112 +3,31 @@
  * This tool shows what domains were blocked in a specified time window.
  */
 
-import { buildApiUrl, callAdGuardAPI, QueryLogResponse } from "../utils/adguard-api";
-import { getRootDomain } from "../utils/domain-helpers";
+import { fetchBlockedGroups } from "../utils/blocked-domains";
 
 type Input = {
   /** Time window in minutes to search (default: 10) */
   minutes?: number;
 };
 
-interface BlockedDomain {
-  domain: string;
-  blockedAt: string;
-  attempts: number;
-  filterRule?: string;
-}
-
 export default async function getQueryLog(input: Input): Promise<string> {
   const minutes = input.minutes || 10;
 
   try {
-    const now = Date.now();
-    const timeFromMillis = now - minutes * 60 * 1000;
-    const timeToMillis = now;
+    const groups = await fetchBlockedGroups(minutes);
 
-    const url = buildApiUrl(
-      `/oapi/v1/query_log?time_from_millis=${timeFromMillis}&time_to_millis=${timeToMillis}&limit=1000`,
-    );
-
-    const response = await callAdGuardAPI(url);
-
-    if (!response.ok) {
-      throw new Error(`AdGuard API error: ${response.status}`);
-    }
-
-    const data = (await response.json()) as QueryLogResponse;
-
-    // Filter for blocked domains
-    const blockedItems = data.items.filter(
-      (item) =>
-        item.filtering_info?.filtering_status === "REQUEST_BLOCKED" ||
-        item.filtering_info?.filtering_status === "RESPONSE_BLOCKED",
-    );
-
-    if (blockedItems.length === 0) {
+    if (groups.length === 0) {
       return `No blocked domains found in the last ${minutes} minutes.`;
     }
 
-    // Group by domain to show unique domains
-    const uniqueDomains = new Map<string, { count: number; lastSeen: string; rule?: string }>();
+    const domainCount = groups.reduce((sum, group) => sum + group.subdomains.length, 0);
+    let output = `Found ${domainCount} blocked domain${domainCount !== 1 ? "s" : ""} in the last ${minutes} minutes:\n\n`;
 
-    for (const item of blockedItems) {
-      const existing = uniqueDomains.get(item.domain);
-      if (existing) {
-        existing.count++;
-        if (new Date(item.time_iso) > new Date(existing.lastSeen)) {
-          existing.lastSeen = item.time_iso;
-          existing.rule = item.filtering_info?.filter_rule;
-        }
-      } else {
-        uniqueDomains.set(item.domain, {
-          count: 1,
-          lastSeen: item.time_iso,
-          rule: item.filtering_info?.filter_rule,
-        });
-      }
-    }
+    for (const group of groups) {
+      output += `**${group.root}** (${group.attempts} attempts, ${getTimeAgo(group.lastSeen)})\n`;
 
-    const domains: BlockedDomain[] = Array.from(uniqueDomains.entries()).map(([domain, info]) => ({
-      domain,
-      blockedAt: info.lastSeen,
-      attempts: info.count,
-      filterRule: info.rule,
-    }));
-
-    // Group by root domain
-    const domainsByRoot = new Map<string, BlockedDomain[]>();
-    for (const domain of domains) {
-      const root = getRootDomain(domain.domain);
-      if (!domainsByRoot.has(root)) {
-        domainsByRoot.set(root, []);
-      }
-      domainsByRoot.get(root)!.push(domain);
-    }
-
-    // Sort groups by most recent activity
-    const sortedRoots = Array.from(domainsByRoot.entries()).sort((a, b) => {
-      const aLatest = Math.max(...a[1].map((d) => new Date(d.blockedAt).getTime()));
-      const bLatest = Math.max(...b[1].map((d) => new Date(d.blockedAt).getTime()));
-      return bLatest - aLatest;
-    });
-
-    // Format output
-    let output = `Found ${domains.length} blocked domain${domains.length !== 1 ? "s" : ""} in the last ${minutes} minutes:\n\n`;
-
-    for (const [root, subdomains] of sortedRoots) {
-      const totalAttempts = subdomains.reduce((sum, d) => sum + d.attempts, 0);
-      const latestTime = subdomains.reduce(
-        (latest, d) => (new Date(d.blockedAt) > new Date(latest) ? d.blockedAt : latest),
-        subdomains[0].blockedAt,
-      );
-
-      output += `**${root}** (${totalAttempts} attempts, ${getTimeAgo(latestTime)})\n`;
-
-      // Show subdomains if different from root
-      const uniqueSubdomains = subdomains.filter((d) => d.domain !== root);
-      if (uniqueSubdomains.length > 0) {
-        for (const subdomain of uniqueSubdomains) {
+      for (const subdomain of group.subdomains) {
+        if (subdomain.domain !== group.root) {
           output += `  - ${subdomain.domain} (${subdomain.attempts} attempts)\n`;
         }
       }
@@ -123,11 +42,8 @@ export default async function getQueryLog(input: Input): Promise<string> {
   }
 }
 
-function getTimeAgo(isoString: string): string {
-  const date = new Date(isoString);
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
+function getTimeAgo(millis: number): string {
+  const diffMins = Math.floor((Date.now() - millis) / 60000);
 
   if (diffMins < 1) return "just now";
   if (diffMins === 1) return "1 min ago";
@@ -137,5 +53,5 @@ function getTimeAgo(isoString: string): string {
   if (diffHours === 1) return "1 hr ago";
   if (diffHours < 24) return `${diffHours} hrs ago`;
 
-  return date.toLocaleDateString();
+  return new Date(millis).toLocaleDateString();
 }
