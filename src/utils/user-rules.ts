@@ -1,4 +1,5 @@
 import { buildApiUrl, callAdGuardAPI, type DNSServerSettings, getDnsServerId } from "./adguard-api";
+import { isCoveredByAllowRule } from "./domain-helpers";
 
 type UserRules = DNSServerSettings["user_rules_settings"];
 
@@ -6,6 +7,10 @@ const ALLOW_RULE = /^@@\|\|([^^]+)\^$/;
 
 function allowRule(domain: string): string {
   return `@@||${domain}^`;
+}
+
+function allowedDomainsIn(rules: string[]): Set<string> {
+  return new Set(rules.flatMap((rule) => ALLOW_RULE.exec(rule)?.[1] ?? []));
 }
 
 async function getUserRules(): Promise<UserRules> {
@@ -29,19 +34,18 @@ async function putUserRules(enabled: boolean, rules: string[]): Promise<void> {
 
 /** Domains that have an `@@||<domain>^` allow rule. */
 export async function getAllowedDomains(): Promise<Set<string>> {
-  const { rules } = await getUserRules();
-  return new Set(rules.flatMap((rule) => ALLOW_RULE.exec(rule)?.[1] ?? []));
+  return allowedDomainsIn((await getUserRules()).rules);
 }
 
-/** Adds an allow rule for each domain that lacks one. Writes nothing when every domain already has its rule. */
+/** Adds an allow rule for each domain no existing allow rule covers. Writes nothing when every domain is covered. */
 export async function allowDomains(domains: string[]): Promise<{ added: string[]; alreadyAllowed: string[] }> {
   const current = await getUserRules();
-  const existing = new Set(current.rules);
+  const allowed = allowedDomainsIn(current.rules);
   const added: string[] = [];
   const alreadyAllowed: string[] = [];
 
   for (const domain of new Set(domains)) {
-    (existing.has(allowRule(domain)) ? alreadyAllowed : added).push(domain);
+    (isCoveredByAllowRule(domain, allowed) ? alreadyAllowed : added).push(domain);
   }
 
   if (added.length > 0) {
