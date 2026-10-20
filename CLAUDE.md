@@ -112,7 +112,9 @@ This logic is used by:
 **Visual Flow (Native UI):**
 1. User runs "Unblock Domain" (optionally with a domain argument) or "Blocked DNS Requests"
 2. "Unblock Domain": the search bar is the input; Enter allows the root, Cmd+Enter the exact hostname.
-   Below it, the last hour of blocked queries grouped by root. A success toast offers Undo.
+   Below it, the last hour of blocked queries grouped by root. After unblocking, a confirmation screen replaces
+   the list: Done (Enter) closes Raycast, Open User Rules (Cmd+Enter) opens the dashboard, Undo (Cmd+Z) removes
+   the rule and returns to the search with the domain filled in. Esc leaves the command.
 3. "Blocked DNS Requests": last 1 to 10 minutes per domain, unblock after a confirmation alert
 
 Both flows use same AdGuard API patterns, same root domain logic, but different UX.
@@ -178,6 +180,7 @@ Domains are unblocked using AdGuard DNS syntax: `@@||domain.com^`
 
 ### View Commands (`src/unblock.tsx`, `src/get-query-log.tsx`)
 - `unblock.tsx` loads `fetchBlockedGroups(60)` and the allow list with `useCachedPromise` (instant reopen, Cmd+R)
+- `Screen` union (`search` | `unblocked`) in one `useState` picks the List or the confirmation `Detail`
 - Writes go through `allowDomains`; Undo calls `removeAllowRules` with exactly the domains that were added
 - `get-query-log.tsx` lists individual blocked domains and confirms with `confirmAlert` before unblocking
 
@@ -201,12 +204,14 @@ Open Raycast AI and use `@adguard-dns` mention:
 ### Testing View Commands
 1. Run `Unblock Domain metropolis.io` from root search → "Unblock" section shows `metropolis.io`
 2. Paste `https://site.metropolis.io/x` → title `metropolis.io`, subtitle "from site.metropolis.io"
-3. Enter → "Allowed metropolis.io" toast with Undo; the group disappears from "Recently Blocked"
-4. Undo → the allow rule is removed and the group comes back
-5. Launch "Blocked DNS Requests" → per-domain list, confirmation before unblock, Cmd+R refreshes
+3. Enter → "Unblocked metropolis.io" confirmation screen with the added `@@||metropolis.io^` rule
+4. Enter (Done) → Raycast closes; Cmd+Enter (Open User Rules) → the AdGuard DNS dashboard opens
+5. Cmd+Z (Undo) → "metropolis.io is blocked again" toast, back to the search with `metropolis.io` filled in
+6. Esc on the confirmation → leaves the command instead of returning to "Recently Blocked"
+7. Launch "Blocked DNS Requests" → per-domain list, confirmation before unblock, Cmd+R refreshes
 
 ### Expected Behavior
 - AI tools return strings to AI (logged in AI chat)
 - View commands show native Raycast UI
 - Both paths use root domain logic
-- Native confirmation always shown before unblocking
+- AI tool and "Blocked DNS Requests" confirm before unblocking; "Unblock Domain" acts on Enter, then confirms with Undo

@@ -1,11 +1,27 @@
-import { Action, ActionPanel, Color, Icon, LaunchProps, List, showToast, Toast } from "@raycast/api";
+import {
+  Action,
+  ActionPanel,
+  closeMainWindow,
+  Color,
+  Detail,
+  Icon,
+  LaunchProps,
+  List,
+  open,
+  popToRoot,
+  showToast,
+  Toast,
+} from "@raycast/api";
 import { showFailureToast, useCachedPromise } from "@raycast/utils";
 import { useMemo, useState } from "react";
 import { type BlockedGroup, fetchBlockedGroups } from "./utils/blocked-domains";
 import { getRootDomain, isCoveredByAllowRule, parseHostname } from "./utils/domain-helpers";
 import { allowDomains, getAllowedDomains, removeAllowRules } from "./utils/user-rules";
 
+const USER_RULES_URL = "https://adguard-dns.io/en/dashboard/";
 const RECENT_MINUTES = 60;
+
+type Screen = { kind: "search" } | { kind: "unblocked"; domain: string; added: string[] };
 
 // useCachedPromise persists its data as JSON, which would turn a Set into {}.
 async function listAllowedDomains(): Promise<string[]> {
@@ -13,7 +29,7 @@ async function listAllowedDomains(): Promise<string[]> {
 }
 
 function showAlreadyAllowed(domain: string) {
-  return showToast({ style: Toast.Style.Success, title: `${domain} is already allowed` });
+  return showToast({ style: Toast.Style.Success, title: `${domain} is already unblocked` });
 }
 
 function describeSubdomains(group: BlockedGroup): string | undefined {
@@ -25,6 +41,7 @@ function describeSubdomains(group: BlockedGroup): string | undefined {
 export default function Unblock(props: LaunchProps<{ arguments: Arguments.Unblock }>) {
   // The generated type says string, but deeplinks and launchCommand can omit an optional argument.
   const [searchText, setSearchText] = useState(props.arguments.domain ?? "");
+  const [screen, setScreen] = useState<Screen>({ kind: "search" });
   const blocked = useCachedPromise(fetchBlockedGroups, [RECENT_MINUTES]);
   const allowedList = useCachedPromise(listAllowedDomains);
   const allowed = useMemo(() => new Set(allowedList.data), [allowedList.data]);
@@ -50,12 +67,12 @@ export default function Unblock(props: LaunchProps<{ arguments: Arguments.Unbloc
       return;
     }
 
-    const toast = await showToast({ style: Toast.Style.Animated, title: `Allowing ${domain}` });
+    const toast = await showToast({ style: Toast.Style.Animated, title: `Unblocking ${domain}` });
     const write = allowDomains([domain]);
     try {
       await allowedList.mutate(write, { optimisticUpdate: (current) => [...(current ?? []), domain] });
     } catch (error) {
-      await showFailureToast(error, { title: `Could not allow ${domain}` });
+      await showFailureToast(error, { title: `Could not unblock ${domain}` });
       return;
     }
 
@@ -64,25 +81,51 @@ export default function Unblock(props: LaunchProps<{ arguments: Arguments.Unbloc
       await showAlreadyAllowed(domain);
       return;
     }
-    toast.style = Toast.Style.Success;
-    toast.title = `Allowed ${domain}`;
-    toast.primaryAction = { title: "Undo", onAction: () => undo(added) };
-    setSearchText("");
+    await toast.hide();
+    setScreen({ kind: "unblocked", domain, added });
   }
 
-  async function undo(domains: string[]) {
-    const label = domains.join(", ");
-    const toast = await showToast({ style: Toast.Style.Animated, title: `Removing allow rule for ${label}` });
+  async function undo(domain: string, added: string[]) {
+    const toast = await showToast({ style: Toast.Style.Animated, title: `Blocking ${domain} again` });
     try {
-      await allowedList.mutate(removeAllowRules(domains), {
-        optimisticUpdate: (current) => (current ?? []).filter((domain) => !domains.includes(domain)),
+      await allowedList.mutate(removeAllowRules(added), {
+        optimisticUpdate: (current) => (current ?? []).filter((allowedDomain) => !added.includes(allowedDomain)),
       });
     } catch (error) {
-      await showFailureToast(error, { title: `Could not undo allowing ${label}` });
+      await showFailureToast(error, { title: `Could not undo unblocking ${domain}` });
       return;
     }
     toast.style = Toast.Style.Success;
-    toast.title = `Removed allow rule for ${label}`;
+    toast.title = `${domain} is blocked again`;
+    setSearchText(domain);
+    setScreen({ kind: "search" });
+  }
+
+  async function done() {
+    await closeMainWindow({ clearRootSearch: true });
+    await popToRoot();
+  }
+
+  if (screen.kind === "unblocked") {
+    const { domain, added } = screen;
+    return (
+      <Detail
+        navigationTitle="Unblocked"
+        markdown={`# Unblocked ${domain}\n\nAdded \`@@||${domain}^\` to your user rules. Devices can take a minute to pick it up because they cache DNS.`}
+        actions={
+          <ActionPanel>
+            <Action title="Done" icon={Icon.Check} onAction={done} />
+            <Action title="Open User Rules" icon={Icon.Globe} onAction={() => open(USER_RULES_URL)} />
+            <Action
+              title="Undo"
+              icon={Icon.ArrowCounterClockwise}
+              shortcut={{ modifiers: ["cmd"], key: "z" }}
+              onAction={() => undo(domain, added)}
+            />
+          </ActionPanel>
+        }
+      />
+    );
   }
 
   const refreshAction = (
@@ -126,16 +169,16 @@ export default function Unblock(props: LaunchProps<{ arguments: Arguments.Unbloc
             icon={Icon.LockUnlocked}
             title={root}
             subtitle={hostname !== root ? `from ${hostname}` : undefined}
-            accessories={hostnameAllowed ? [{ tag: { value: "Allowed", color: Color.Green } }] : undefined}
+            accessories={hostnameAllowed ? [{ tag: { value: "Unblocked", color: Color.Green } }] : undefined}
             actions={
               <ActionPanel>
                 <Action
-                  title={`Allow ${root}`}
+                  title={`Unblock ${root}`}
                   icon={Icon.CheckCircle}
                   onAction={() => (hostnameAllowed ? showAlreadyAllowed(hostname) : allow(root))}
                 />
                 {hostname !== root && (
-                  <Action title={`Allow Only ${hostname}`} icon={Icon.Checkmark} onAction={() => allow(hostname)} />
+                  <Action title={`Unblock Only ${hostname}`} icon={Icon.Checkmark} onAction={() => allow(hostname)} />
                 )}
                 {refreshAction}
               </ActionPanel>
@@ -162,10 +205,10 @@ export default function Unblock(props: LaunchProps<{ arguments: Arguments.Unbloc
               ]}
               actions={
                 <ActionPanel>
-                  <Action title={`Allow ${group.root}`} icon={Icon.CheckCircle} onAction={() => allow(group.root)} />
+                  <Action title={`Unblock ${group.root}`} icon={Icon.CheckCircle} onAction={() => allow(group.root)} />
                   {onlySubdomain && (
                     <Action
-                      title={`Allow Only ${onlySubdomain}`}
+                      title={`Unblock Only ${onlySubdomain}`}
                       icon={Icon.Checkmark}
                       onAction={() => allow(onlySubdomain)}
                     />
