@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getRootDomain, isCoveredByAllowRule, parseHostname } from "../src/utils/domain-helpers.ts";
+import {
+  type BlockedDomain,
+  getRootDomain,
+  groupByRoot,
+  isCoveredByAllowRule,
+  parseHostname,
+} from "../src/utils/domain-helpers.ts";
 
 test("parseHostname accepts a bare hostname", () => {
   assert.equal(parseHostname("site.metropolis.io"), "site.metropolis.io");
@@ -56,4 +62,35 @@ test("isCoveredByAllowRule is false for an empty allow list", () => {
 test("getRootDomain keeps three labels under a two-part TLD", () => {
   assert.equal(getRootDomain("news.bbc.co.uk"), "bbc.co.uk");
   assert.equal(getRootDomain("api-global.netflix.com"), "netflix.com");
+});
+
+function blocked(domain: string, attempts: number, lastSeen: number): BlockedDomain {
+  return { domain, root: getRootDomain(domain), attempts, lastSeen, devices: [], rules: [] };
+}
+
+test("groupByRoot sums attempts per root and keeps the latest lastSeen", () => {
+  const [netflix] = groupByRoot([blocked("api.netflix.com", 2, 100), blocked("www.netflix.com", 3, 300)]);
+  assert.equal(netflix.root, "netflix.com");
+  assert.equal(netflix.attempts, 5);
+  assert.equal(netflix.lastSeen, 300);
+});
+
+test("groupByRoot orders roots by most recently seen and domains by attempts", () => {
+  const groups = groupByRoot([
+    blocked("a.netflix.com", 1, 100),
+    blocked("ads.bbc.co.uk", 1, 200),
+    blocked("b.netflix.com", 4, 50),
+  ]);
+  assert.deepEqual(
+    groups.map(({ root }) => root),
+    ["bbc.co.uk", "netflix.com"],
+  );
+  assert.deepEqual(
+    groups[1].subdomains.map(({ domain }) => domain),
+    ["b.netflix.com", "a.netflix.com"],
+  );
+});
+
+test("groupByRoot returns no groups for no domains", () => {
+  assert.deepEqual(groupByRoot([]), []);
 });

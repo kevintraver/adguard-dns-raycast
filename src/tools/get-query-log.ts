@@ -3,7 +3,8 @@
  * This tool shows what domains were blocked in a specified time window.
  */
 
-import { fetchBlockedGroups } from "../utils/blocked-domains";
+import { fetchBlockedDomains } from "../utils/blocked-domains";
+import { groupByRoot } from "../utils/domain-helpers";
 
 type Input = {
   /** Time window in minutes to search (default: 10) */
@@ -14,16 +15,16 @@ export default async function getQueryLog(input: Input): Promise<string> {
   const minutes = input.minutes || 10;
 
   try {
-    const groups = await fetchBlockedGroups(minutes);
+    const domains = await fetchBlockedDomains(minutes);
 
-    if (groups.length === 0) {
+    if (domains.length === 0) {
       return `No blocked domains found in the last ${minutes} minutes.`;
     }
 
-    const domainCount = groups.reduce((sum, group) => sum + group.subdomains.length, 0);
+    const domainCount = domains.length;
     let output = `Found ${domainCount} blocked domain${domainCount !== 1 ? "s" : ""} in the last ${minutes} minutes:\n\n`;
 
-    for (const group of groups) {
+    for (const group of groupByRoot(domains)) {
       output += `**${group.root}** (${group.attempts} attempts, ${getTimeAgo(group.lastSeen)})\n`;
 
       for (const subdomain of group.subdomains) {

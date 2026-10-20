@@ -39,9 +39,9 @@ The extension follows Raycast's AI tools pattern with four main components:
    - `unblock-domain.ts` - Unblock domains with native confirmation
 3. **Utils** (`src/utils/`) - Shared utilities
    - `adguard-api.ts` - API client (API key auth)
-   - `domain-helpers.ts` - Domain parsing and root extraction (pure, unit tested in `test/`)
+   - `domain-helpers.ts` - Domain parsing, root extraction, `groupByRoot` (pure, unit tested in `test/`)
    - `user-rules.ts` - The only reader/writer of user rules: `getAllowedDomains`, `allowDomains`, `removeAllowRules`
-   - `blocked-domains.ts` - `fetchBlockedGroups(minutes)`: blocked queries grouped by root domain
+   - `blocked-domains.ts` - `fetchBlockedDomains(minutes)`: blocked queries, one entry per domain
 
 ### API Integration Pattern
 
@@ -180,7 +180,7 @@ Domains are unblocked using AdGuard DNS syntax: `@@||domain.com^`
 - Confirmation shows what will actually be unblocked (roots + their subdomains)
 
 ### View Command (`src/unblock.tsx`)
-- Loads `fetchBlockedGroups(60)` and the allow list with `useCachedPromise` (instant reopen, Cmd+R)
+- Loads `fetchBlockedDomains(60)` and the allow list with `useCachedPromise` (instant reopen, Cmd+R)
 - `Screen` union (`search` | `unblocking` | `result`) in one `useState` picks the List, the loading `Detail`, or
   the result `Detail`. A parseable argument starts in `unblocking`; `result` with empty `added` means already unblocked
 - Writes go through `allowDomains`, which skips domains an allow rule already covers; Undo calls `removeAllowRules`

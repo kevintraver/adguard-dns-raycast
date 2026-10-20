@@ -180,7 +180,7 @@ adguard-raycast/
 │   └── utils/
 │       ├── adguard-api.ts         # Shared AdGuard API utilities
 │       ├── user-rules.ts          # Reads and writes allow rules
-│       ├── blocked-domains.ts     # Blocked queries grouped by root domain
+│       ├── blocked-domains.ts     # Blocked queries per domain
 │       └── domain-helpers.ts      # Hostname parsing and root domains
 ├── test/                          # node:test unit tests (npm test)
 ├── package.json                   # Extension manifest

@@ -61,3 +61,33 @@ export function isCoveredByAllowRule(domain: string, allowed: ReadonlySet<string
   }
   return false;
 }
+
+export type BlockedDomain = {
+  domain: string;
+  root: string;
+  attempts: number;
+  lastSeen: number;
+  devices: string[];
+  rules: string[];
+};
+
+export type BlockedGroup = {
+  root: string;
+  attempts: number;
+  lastSeen: number;
+  subdomains: BlockedDomain[];
+};
+
+/** Groups blocked domains by root, most recently seen root first, each root's domains by attempts descending. */
+export function groupByRoot(domains: BlockedDomain[]): BlockedGroup[] {
+  const byRoot = new Map<string, BlockedDomain[]>();
+  for (const domain of domains) {
+    byRoot.set(domain.root, [...(byRoot.get(domain.root) ?? []), domain]);
+  }
+  return Array.from(byRoot, ([root, subdomains]) => ({
+    root,
+    attempts: subdomains.reduce((sum, { attempts }) => sum + attempts, 0),
+    lastSeen: Math.max(...subdomains.map(({ lastSeen }) => lastSeen)),
+    subdomains: subdomains.sort((a, b) => b.attempts - a.attempts),
+  })).sort((a, b) => b.lastSeen - a.lastSeen);
+}

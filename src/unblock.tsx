@@ -15,8 +15,14 @@ import {
 import { showFailureToast, useCachedPromise } from "@raycast/utils";
 import { useEffect, useMemo, useState } from "react";
 import { getDnsServerId } from "./utils/adguard-api";
-import { type BlockedGroup, fetchBlockedGroups } from "./utils/blocked-domains";
-import { getRootDomain, isCoveredByAllowRule, parseHostname } from "./utils/domain-helpers";
+import { fetchBlockedDomains } from "./utils/blocked-domains";
+import {
+  type BlockedGroup,
+  getRootDomain,
+  groupByRoot,
+  isCoveredByAllowRule,
+  parseHostname,
+} from "./utils/domain-helpers";
 import { allowDomains, getAllowedDomains, removeAllowRules } from "./utils/user-rules";
 
 const BLOCKED_QUERIES_URL =
@@ -53,7 +59,7 @@ export default function Unblock(props: LaunchProps<{ arguments: Arguments.Unbloc
   const argument = props.arguments.domain ?? "";
   const [searchText, setSearchText] = useState(argument);
   const [screen, setScreen] = useState<Screen>(() => initialScreen(argument));
-  const blocked = useCachedPromise(fetchBlockedGroups, [RECENT_MINUTES]);
+  const blocked = useCachedPromise(fetchBlockedDomains, [RECENT_MINUTES]);
   const allowedList = useCachedPromise(listAllowedDomains);
   const allowed = useMemo(() => new Set(allowedList.data), [allowedList.data]);
 
@@ -61,7 +67,7 @@ export default function Unblock(props: LaunchProps<{ arguments: Arguments.Unbloc
   const root = hostname && getRootDomain(hostname);
   const hostnameAllowed = hostname !== undefined && isCoveredByAllowRule(hostname, allowed);
   const needle = hostname ?? searchText.trim().toLowerCase();
-  const groups = (blocked.data ?? []).filter(
+  const groups = groupByRoot(blocked.data ?? []).filter(
     (group) =>
       !group.subdomains.every(({ domain }) => isCoveredByAllowRule(domain, allowed)) &&
       (group.root.includes(needle) || group.subdomains.some(({ domain }) => domain.includes(needle))),
@@ -226,7 +232,7 @@ export default function Unblock(props: LaunchProps<{ arguments: Arguments.Unbloc
               title={group.root}
               subtitle={describeSubdomains(group)}
               accessories={[
-                ...group.devices.map((device) => ({ tag: device })),
+                ...[...new Set(group.subdomains.flatMap(({ devices }) => devices))].map((device) => ({ tag: device })),
                 { text: `${group.attempts} attempt${group.attempts !== 1 ? "s" : ""}` },
                 { date: new Date(group.lastSeen) },
               ]}
