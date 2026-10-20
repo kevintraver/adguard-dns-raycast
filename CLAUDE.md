@@ -33,7 +33,8 @@ The extension follows Raycast's AI tools pattern with four main components:
 
 1. **Commands** (`src/*.tsx`) - Raycast commands with UI views
    - `index.tsx` - Usage information command
-   - `unblock.tsx` - "Unblock Domain": unblock the domain argument directly, or pick one blocked in the last hour
+   - `unblock.tsx` - "Unblock Domain": unblock the domain argument directly, or pick one blocked recently
+   - `get-query-log.tsx` - "Blocked DNS Requests": the same view as Unblock Domain without an argument
 2. **Tools** (`src/tools/`) - AI-callable functions (no-view mode)
    - `get-query-log.ts` - Fetch DNS query logs
    - `unblock-domain.ts` - Unblock domains with native confirmation
@@ -95,7 +96,7 @@ Implementation in `src/utils/domain-helpers.ts`:
 
 This logic is used by:
 - `unblock-domain` tool - Automatically converts subdomains to roots
-- `unblock` command - Groups recently blocked domains by root, allows the root by default
+- `unblock` and `get-query-log` commands - Show each blocked domain's root, allow the root by default
 - AI instructions - Presents findings grouped by root
 
 ### Two User Flows
@@ -109,11 +110,11 @@ This logic is used by:
 6. User confirms → Domains unblocked
 
 **Visual Flow (Native UI):**
-1. User runs "Unblock Domain", optionally with a domain argument
+1. User runs "Unblock Domain", optionally with a domain argument, or "Blocked DNS Requests" (no argument)
 2. With a domain or URL as the argument, its root is unblocked straight away and the result screen shows.
-3. Without one, the Recently Blocked list shows the last hour of blocked queries grouped by root. The search bar
-   is also an input: Enter allows the root, Cmd+Enter the exact hostname. Cmd+O opens blocked queries in the
-   dashboard.
+3. Without one, the Recently Blocked list shows one row per blocked domain in the dropdown's time window (1, 5 or
+   10 minutes or an hour, default 1 minute, remembered). The search bar is also an input: Enter allows the root,
+   Cmd+Enter the exact hostname. Cmd+O opens blocked queries in the dashboard.
 4. The result screen replaces the list: Done (Enter) closes Raycast, Open User Rules (Cmd+Enter) opens the
    server's user rules page, Undo (Cmd+Z) removes the rule and returns to the search with the domain filled in.
    A domain an allow rule already covers gets "already unblocked" and no Undo. Esc leaves the command.
@@ -180,7 +181,9 @@ Domains are unblocked using AdGuard DNS syntax: `@@||domain.com^`
 - Confirmation shows what will actually be unblocked (roots + their subdomains)
 
 ### View Command (`src/unblock.tsx`)
-- Loads `fetchBlockedDomains(60)` and the allow list with `useCachedPromise` (instant reopen, Cmd+R)
+- `get-query-log.tsx` renders the exported `UnblockDomain` with no domain; `unblock.tsx` passes its argument
+- Loads `fetchBlockedDomains(minutes)` for the dropdown's window and the allow list with `useCachedPromise`
+  (instant reopen, Cmd+R)
 - `Screen` union (`search` | `unblocking` | `result`) in one `useState` picks the List, the loading `Detail`, or
   the result `Detail`. A parseable argument starts in `unblocking`; `result` with empty `added` means already unblocked
 - Writes go through `allowDomains`, which skips domains an allow rule already covers; Undo calls `removeAllowRules`
@@ -209,10 +212,14 @@ Open Raycast AI and use `@adguard-dns` mention:
 2. Enter (Done) → Raycast closes; Cmd+Enter (Open User Rules) → the server's user rules page opens
 3. Cmd+Z (Undo) → "metropolis.io is blocked again" toast, back to the search with `metropolis.io` filled in
 4. Run `Unblock Domain metropolis.io` twice → the second run shows "metropolis.io is already unblocked", no Undo
-5. Run `Unblock Domain` with no argument → Recently Blocked list; paste `https://site.metropolis.io/x` → title
-   `metropolis.io`, subtitle "from site.metropolis.io"; Enter unblocks with a progress toast
+5. Run `Unblock Domain` with no argument → Recently Blocked list, one row per domain with its root, devices,
+   attempts and time; a subdomain row's Enter unblocks the root, Cmd+Enter the exact domain; paste
+   `https://site.metropolis.io/x` → title `metropolis.io`, subtitle "from site.metropolis.io"; Enter unblocks with a
+   progress toast
 6. Esc on the result screen → leaves the command instead of returning to "Recently Blocked"
 7. Cmd+O → blocked queries open in the dashboard; Cmd+R refreshes the list
+8. Launch "Blocked DNS Requests" → the same list; pick "Last 5 minutes", relaunch → still 5 minutes; with nothing
+   blocked the empty view reads "Nothing blocked in the last 5 minutes"
 
 ### Expected Behavior
 - AI tools return strings to AI (logged in AI chat)

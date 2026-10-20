@@ -16,18 +16,18 @@ import { showFailureToast, useCachedPromise } from "@raycast/utils";
 import { useEffect, useMemo, useState } from "react";
 import { getDnsServerId } from "./utils/adguard-api";
 import { fetchBlockedDomains } from "./utils/blocked-domains";
-import {
-  type BlockedGroup,
-  getRootDomain,
-  groupByRoot,
-  isCoveredByAllowRule,
-  parseHostname,
-} from "./utils/domain-helpers";
+import { getRootDomain, isCoveredByAllowRule, parseHostname } from "./utils/domain-helpers";
 import { allowDomains, getAllowedDomains, removeAllowRules } from "./utils/user-rules";
 
 const BLOCKED_QUERIES_URL =
   "https://adguard-dns.io/en/dashboard/statistics/query?limit=20&statuses%5B0%5D=REQUEST_BLOCKED&statuses%5B1%5D=RESPONSE_BLOCKED";
-const RECENT_MINUTES = 60;
+const MAX_TITLE_LENGTH = 50;
+const TIME_WINDOWS = [
+  { minutes: 1, label: "1 minute" },
+  { minutes: 5, label: "5 minutes" },
+  { minutes: 10, label: "10 minutes" },
+  { minutes: 60, label: "hour" },
+];
 
 type Screen =
   | { kind: "search" }
@@ -48,18 +48,17 @@ async function listAllowedDomains(): Promise<string[]> {
   return [...(await getAllowedDomains())];
 }
 
-function describeSubdomains(group: BlockedGroup): string | undefined {
-  const others = group.subdomains.map(({ domain }) => domain).filter((domain) => domain !== group.root);
-  if (others.length === 0) return undefined;
-  return others.slice(0, 2).join(", ") + (others.length > 2 ? ` +${others.length - 2}` : "");
+export default function Command(props: LaunchProps<{ arguments: Arguments.Unblock }>) {
+  return <UnblockDomain domain={props.arguments.domain} />;
 }
 
-export default function Unblock(props: LaunchProps<{ arguments: Arguments.Unblock }>) {
-  // The generated type says string, but deeplinks and launchCommand can omit an optional argument.
-  const argument = props.arguments.domain ?? "";
+export function UnblockDomain({ domain }: { domain?: string }) {
+  // Unblock Domain's generated argument type says string, but deeplinks and launchCommand can omit it.
+  const argument = domain ?? "";
   const [searchText, setSearchText] = useState(argument);
   const [screen, setScreen] = useState<Screen>(() => initialScreen(argument));
-  const blocked = useCachedPromise(fetchBlockedDomains, [RECENT_MINUTES]);
+  const [timeWindow, setTimeWindow] = useState(TIME_WINDOWS[0]);
+  const blocked = useCachedPromise(fetchBlockedDomains, [timeWindow.minutes]);
   const allowedList = useCachedPromise(listAllowedDomains);
   const allowed = useMemo(() => new Set(allowedList.data), [allowedList.data]);
 
@@ -67,10 +66,8 @@ export default function Unblock(props: LaunchProps<{ arguments: Arguments.Unbloc
   const root = hostname && getRootDomain(hostname);
   const hostnameAllowed = hostname !== undefined && isCoveredByAllowRule(hostname, allowed);
   const needle = hostname ?? searchText.trim().toLowerCase();
-  const groups = groupByRoot(blocked.data ?? []).filter(
-    (group) =>
-      !group.subdomains.every(({ domain }) => isCoveredByAllowRule(domain, allowed)) &&
-      (group.root.includes(needle) || group.subdomains.some(({ domain }) => domain.includes(needle))),
+  const rows = (blocked.data ?? []).filter(
+    (row) => !isCoveredByAllowRule(row.domain, allowed) && row.domain.includes(needle),
   );
 
   function refresh() {
@@ -184,12 +181,26 @@ export default function Unblock(props: LaunchProps<{ arguments: Arguments.Unbloc
       searchText={searchText}
       onSearchTextChange={setSearchText}
       searchBarPlaceholder="Domain or URL to unblock"
+      searchBarAccessory={
+        <List.Dropdown
+          tooltip="Time Window"
+          storeValue
+          defaultValue={String(TIME_WINDOWS[0].minutes)}
+          onChange={(value) =>
+            setTimeWindow(TIME_WINDOWS.find(({ minutes }) => String(minutes) === value) ?? TIME_WINDOWS[0])
+          }
+        >
+          {TIME_WINDOWS.map(({ minutes, label }) => (
+            <List.Dropdown.Item key={minutes} title={`Last ${label}`} value={String(minutes)} />
+          ))}
+        </List.Dropdown>
+      }
       actions={<ActionPanel>{listActions}</ActionPanel>}
     >
       {!isLoading && searchText.trim() === "" && (
         <List.EmptyView
           icon={Icon.CheckCircle}
-          title="Nothing blocked in the last hour"
+          title={`Nothing blocked in the last ${timeWindow.label}`}
           description="Type a domain or paste a URL to unblock it."
         />
       )}
@@ -220,38 +231,36 @@ export default function Unblock(props: LaunchProps<{ arguments: Arguments.Unbloc
         </List.Section>
       )}
       <List.Section title="Recently Blocked">
-        {groups.map((group) => {
-          const onlySubdomain =
-            group.subdomains.length === 1 && group.subdomains[0].domain !== group.root
-              ? group.subdomains[0].domain
-              : undefined;
-          return (
-            <List.Item
-              key={group.root}
-              icon={{ source: Icon.XMarkCircle, tintColor: Color.Red }}
-              title={group.root}
-              subtitle={describeSubdomains(group)}
-              accessories={[
-                ...[...new Set(group.subdomains.flatMap(({ devices }) => devices))].map((device) => ({ tag: device })),
-                { text: `${group.attempts} attempt${group.attempts !== 1 ? "s" : ""}` },
-                { date: new Date(group.lastSeen) },
-              ]}
-              actions={
-                <ActionPanel>
-                  <Action title={`Unblock ${group.root}`} icon={Icon.CheckCircle} onAction={() => allow(group.root)} />
-                  {onlySubdomain && (
-                    <Action
-                      title={`Unblock Only ${onlySubdomain}`}
-                      icon={Icon.Checkmark}
-                      onAction={() => allow(onlySubdomain)}
-                    />
-                  )}
-                  {listActions}
-                </ActionPanel>
-              }
-            />
-          );
-        })}
+        {rows.map((row) => (
+          <List.Item
+            key={row.domain}
+            icon={{ source: Icon.XMarkCircle, tintColor: Color.Red }}
+            title={{
+              value:
+                row.domain.length > MAX_TITLE_LENGTH ? row.domain.substring(0, MAX_TITLE_LENGTH) + "..." : row.domain,
+              tooltip: row.domain.length > MAX_TITLE_LENGTH ? row.domain : undefined,
+            }}
+            accessories={[
+              { text: row.root, tooltip: `Root Domain: ${row.root}` },
+              ...row.devices.map((device) => ({ tag: device })),
+              { text: `${row.attempts} attempt${row.attempts !== 1 ? "s" : ""}` },
+              { date: new Date(row.lastSeen) },
+            ]}
+            actions={
+              <ActionPanel>
+                {row.domain !== row.root && (
+                  <Action
+                    title={`Unblock Root (${row.root})`}
+                    icon={Icon.CheckCircle}
+                    onAction={() => allow(row.root)}
+                  />
+                )}
+                <Action title={`Unblock ${row.domain}`} icon={Icon.Checkmark} onAction={() => allow(row.domain)} />
+                {listActions}
+              </ActionPanel>
+            }
+          />
+        ))}
       </List.Section>
     </List>
   );
