@@ -23,6 +23,20 @@
       "title": "Blocked DNS Requests",
       "description": "View and unblock domains from recent DNS query logs with root domain prioritization",
       "mode": "view"
+    },
+    {
+      "name": "unblock",
+      "title": "Unblock Domain",
+      "description": "Type or paste a domain to unblock it, or pick one that was blocked recently",
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "domain",
+          "type": "text",
+          "placeholder": "domain or URL",
+          "required": false
+        }
+      ]
     }
   ],
   "tools": [

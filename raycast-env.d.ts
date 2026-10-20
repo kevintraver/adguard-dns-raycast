@@ -22,6 +22,8 @@ declare namespace Preferences {
   export type Index = ExtensionPreferences & {}
   /** Preferences accessible in the `get-query-log` command */
   export type GetQueryLog = ExtensionPreferences & {}
+  /** Preferences accessible in the `unblock` command */
+  export type Unblock = ExtensionPreferences & {}
 }
 
 declare namespace Arguments {
@@ -29,5 +31,10 @@ declare namespace Arguments {
   export type Index = {}
   /** Arguments passed to the `get-query-log` command */
   export type GetQueryLog = {}
+  /** Arguments passed to the `unblock` command */
+  export type Unblock = {
+  /** domain or URL */
+  "domain": string
+}
 }
 

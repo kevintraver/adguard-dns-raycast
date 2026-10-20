@@ -24,6 +24,14 @@ ask @adguard-dns Show me what's been blocked in the last hour
 ask @adguard-dns My banking app won't load
 \`\`\`
 
+## Commands
+
+### ⌨️ Unblock Domain
+Type or paste a domain or URL, or pick one blocked in the last hour. Enter allows the root domain, Cmd+Enter only the exact hostname.
+
+### 📋 Blocked DNS Requests
+Lists domains blocked in the last few minutes.
+
 ## Available Tools
 
 ### 🔍 Get Query Log

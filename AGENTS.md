@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-The extension code lives in `src/`. Command entry points (`index.tsx`, `get-query-log.tsx`, `review-blocked-domains.tsx`) render the Raycast views. Tool integrations (e.g., `tools/unblock-domain.ts`) encapsulate side-effectful operations exposed to AI. Shared logic resides in `utils/` (`adguard-api.ts` hosts REST clients, `domain-helpers.ts` normalizes root domains). Static badges and icons are in `assets/`. Extension metadata and scripts sit in `package.json`; linting and typing config is in `eslint.config.mjs`, `tsconfig.json`, and `raycast-env.d.ts`.
+The extension code lives in `src/`. Command entry points (`index.tsx`, `get-query-log.tsx`, `unblock.tsx`) render the Raycast views. Tool integrations (e.g., `tools/unblock-domain.ts`) encapsulate side-effectful operations exposed to AI. Shared logic resides in `utils/` (`adguard-api.ts` hosts REST clients, `user-rules.ts` owns reading and writing allow rules, `blocked-domains.ts` groups blocked queries, `domain-helpers.ts` parses hostnames and root domains). Static badges and icons are in `assets/`. Extension metadata and scripts sit in `package.json`; linting and typing config is in `eslint.config.mjs`, `tsconfig.json`, and `raycast-env.d.ts`.
 
 ## Build, Test, and Development Commands
 - `npm run dev` / `ray develop`: launches the extension in Raycast for interactive development with hot reload.
@@ -14,7 +14,7 @@ The extension code lives in `src/`. Command entry points (`index.tsx`, `get-quer
 This project follows `@raycast/eslint-config` and Prettier defaults (2-space indent, semicolons, double quotes for JSX, single quotes elsewhere). Use PascalCase for React components and view files, camelCase for functions and helpers, and SCREAMING_SNAKE_CASE for config constants. Prefer functional React patterns with hooks, and keep side-effectful logic in `tools/` so command views stay declarative. Run `npm run lint` after notable refactors to avoid style drift.
 
 ## Testing Guidelines
-There is no automated test suite yet; use linting as the guardrail. When adding functionality, verify it manually inside Raycast via `npm run dev`, covering both happy path and error dialogs. Add deterministic helpers under `src/utils/` to ease future unit tests and keep business logic pure where possible.
+`npm test` runs `node --test test/` over the pure helpers in `src/utils/domain-helpers.ts`; keep that file free of imports so plain Node can load it. When adding functionality, verify it manually inside Raycast via `npm run dev`, covering both happy path and error dialogs. Add deterministic helpers under `src/utils/` to ease future unit tests and keep business logic pure where possible.
 
 ## Commit & Pull Request Guidelines
 Commit messages follow Conventional Commits (`feat: …`, `fix: …`, `chore: …`), mirroring the existing history. Keep commits focused on a single concern and run `npm run fix-lint` beforehand. Pull requests should describe the user impact, list Raycast commands touched, note credential requirements, and include screenshots or short recordings of new UI states where relevant. Reference GitHub issues or Raycast review feedback with `Closes #ID` when applicable.

@@ -8,6 +8,7 @@ A Raycast AI extension that helps troubleshoot service issues by analyzing AdGua
 - 🤖 **AI-Powered Troubleshooting** - Natural language interaction: "ask @adguard-dns Netflix isn't working"
 - ✅ **Confirmation Required** - Always asks for user confirmation before unblocking domains
 - ⚡ **Multi-Domain Support** - Unblock multiple domains in a single operation
+- ⌨️ **Unblock Domain Command** - Type or paste a domain or URL, or pick one blocked in the last hour
 - 🔄 **Automatic Token Refresh** - Handles AdGuard DNS API authentication automatically
 
 ## Screenshots
@@ -97,6 +98,12 @@ ask @adguard-dns Show me what's been blocked in the last hour
 ask @adguard-dns Why isn't YouTube loading?
 ```
 
+### Unblock Domain Command
+
+Run **Unblock Domain** from Raycast, optionally with the domain as an argument (`Unblock Domain metropolis.io`).
+Type a domain, paste a URL, or pick from the domains blocked in the last hour. Enter allows the root domain
+(`site.metropolis.io` → `metropolis.io`), Cmd+Enter allows only the exact hostname. The success toast has an Undo action.
+
 ### How It Works
 
 1. **User reports issue**: "ask @adguard-dns Netflix isn't working"
@@ -166,10 +173,15 @@ npm run fix-lint
 ```
 adguard-raycast/
 ├── src/
-│   ├── get-query-log.ts          # Query log fetching tool
-│   ├── unblock-domain.ts          # Domain unblocking tool (with confirmation)
+│   ├── get-query-log.tsx          # Blocked DNS Requests command
+│   ├── unblock.tsx                # Unblock Domain command
+│   ├── tools/                     # AI tools (get-query-log, unblock-domain)
 │   └── utils/
-│       └── adguard-api.ts         # Shared AdGuard API utilities
+│       ├── adguard-api.ts         # Shared AdGuard API utilities
+│       ├── user-rules.ts          # Reads and writes allow rules
+│       ├── blocked-domains.ts     # Blocked queries grouped by root domain
+│       └── domain-helpers.ts      # Hostname parsing and root domains
+├── test/                          # node:test unit tests (npm test)
 ├── package.json                   # Extension manifest
 ├── tsconfig.json                  # TypeScript configuration
 └── README.md                      # This file

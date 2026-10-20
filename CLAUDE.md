@@ -33,13 +33,16 @@ The extension follows Raycast's AI tools pattern with four main components:
 
 1. **Commands** (`src/*.tsx`) - Raycast commands with UI views
    - `index.tsx` - Usage information command
-   - `review-blocked-domains.tsx` - Interactive UI for reviewing/unblocking domains
+   - `get-query-log.tsx` - "Blocked DNS Requests": recent blocked queries per domain, unblock with confirmation
+   - `unblock.tsx` - "Unblock Domain": type or paste a domain/URL, or pick one blocked in the last hour
 2. **Tools** (`src/tools/`) - AI-callable functions (no-view mode)
    - `get-query-log.ts` - Fetch DNS query logs
    - `unblock-domain.ts` - Unblock domains with native confirmation
 3. **Utils** (`src/utils/`) - Shared utilities
    - `adguard-api.ts` - API client (API key auth)
-   - `domain-helpers.ts` - Domain parsing and root extraction
+   - `domain-helpers.ts` - Domain parsing and root extraction (pure, unit tested in `test/`)
+   - `user-rules.ts` - The only reader/writer of user rules: `getAllowedDomains`, `allowDomains`, `removeAllowRules`
+   - `blocked-domains.ts` - `fetchBlockedGroups(minutes)`: blocked queries grouped by root domain
 
 ### API Integration Pattern
 
@@ -88,12 +91,12 @@ This provides better UX than text-based AI confirmation.
 
 Implementation in `src/utils/domain-helpers.ts`:
 - `getRootDomain(domain)` - Extracts root from subdomain
-- `groupByRootDomain(domains)` - Groups subdomains by root
-- `isRootDomain(domain)` - Checks if already root
+- `parseHostname(input)` - Extracts a hostname from a domain, URL, or AdGuard rule
+- `isCoveredByAllowRule(domain, allowed)` - True if the domain or any parent has an allow rule
 
 This logic is used by:
 - `unblock-domain` tool - Automatically converts subdomains to roots
-- `review-blocked-domains` command - Groups UI by root domains
+- `unblock` command - Groups recently blocked domains by root, allows the root by default
 - AI instructions - Presents findings grouped by root
 
 ### Two User Flows
@@ -107,11 +110,10 @@ This logic is used by:
 6. User confirms → Domains unblocked
 
 **Visual Flow (Native UI):**
-1. User runs "Review Blocked Domains" command
-2. Command fetches last 30 minutes of query logs directly from API (no caching)
-3. Shows List grouped by root domains with metadata
-4. User clicks domain → Confirmation → Unblock
-5. List auto-refreshes after unblock
+1. User runs "Unblock Domain" (optionally with a domain argument) or "Blocked DNS Requests"
+2. "Unblock Domain": the search bar is the input; Enter allows the root, Cmd+Enter the exact hostname.
+   Below it, the last hour of blocked queries grouped by root. A success toast offers Undo.
+3. "Blocked DNS Requests": last 1 to 10 minutes per domain, unblock after a confirmation alert
 
 Both flows use same AdGuard API patterns, same root domain logic, but different UX.
 
@@ -165,7 +167,7 @@ Domains are unblocked using AdGuard DNS syntax: `@@||domain.com^`
 
 ### Domain Parsing (`src/utils/domain-helpers.ts`)
 - `getRootDomain(domain)` - Core logic for root extraction (handles `.co.uk` etc)
-- `groupByRootDomain(domains)` - Aggregates subdomains under roots
+- `parseHostname(input)` / `isCoveredByAllowRule(domain, allowed)`
 - Used by both AI tools and UI commands
 
 ### AI Tool with Confirmation (`src/tools/unblock-domain.ts`)
@@ -174,12 +176,10 @@ Domains are unblocked using AdGuard DNS syntax: `@@||domain.com^`
 - Automatically converts input domains to roots before processing
 - Confirmation shows what will actually be unblocked (roots + their subdomains)
 
-### View Command (`src/review-blocked-domains.tsx`)
-- React component using Raycast UI primitives (List, ActionPanel, Actions)
-- Fetches data directly from AdGuard API (no caching)
-- Uses same domain grouping logic as AI tools
-- Shows domains grouped by root with metadata (attempts, time ago)
-- Unblock action calls same API patterns as tool
+### View Commands (`src/unblock.tsx`, `src/get-query-log.tsx`)
+- `unblock.tsx` loads `fetchBlockedGroups(60)` and the allow list with `useCachedPromise` (instant reopen, Cmd+R)
+- Writes go through `allowDomains`; Undo calls `removeAllowRules` with exactly the domains that were added
+- `get-query-log.tsx` lists individual blocked domains and confirms with `confirmAlert` before unblocking
 
 ## Testing
 
@@ -195,13 +195,15 @@ Open Raycast AI and use `@adguard-dns` mention:
 - "all" → Should show native confirmation dialog with root domains
 - Verify confirmation shows root domains (e.g., `netflix.com`, not `www.netflix.com`)
 
-### Testing View Command
-1. Launch "Review Blocked Domains" command from Raycast
-2. Should fetch and display last 30 minutes of blocked domains
-3. Verify domains are grouped by root
-4. Click domain → Should show confirmation → Unblock
-5. List should refresh automatically after unblock
-6. Press Cmd+R to manually refresh
+### Unit Tests
+`npm test` runs `node --test test/` against the pure helpers in `src/utils/domain-helpers.ts`.
+
+### Testing View Commands
+1. Run `Unblock Domain metropolis.io` from root search → "Unblock" section shows `metropolis.io`
+2. Paste `https://site.metropolis.io/x` → title `metropolis.io`, subtitle "from site.metropolis.io"
+3. Enter → "Allowed metropolis.io" toast with Undo; the group disappears from "Recently Blocked"
+4. Undo → the allow rule is removed and the group comes back
+5. Launch "Blocked DNS Requests" → per-domain list, confirmation before unblock, Cmd+R refreshes
 
 ### Expected Behavior
 - AI tools return strings to AI (logged in AI chat)
