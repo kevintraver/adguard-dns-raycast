@@ -8,13 +8,13 @@ A Raycast AI extension that helps troubleshoot service issues by analyzing AdGua
 - 🤖 **AI-Powered Troubleshooting** - Natural language interaction: "ask @adguard-dns Netflix isn't working"
 - ✅ **Confirmation Required** - Always asks for user confirmation before unblocking domains
 - ⚡ **Multi-Domain Support** - Unblock multiple domains in a single operation
-- ⌨️ **Unblock Domain Command** - Type or paste a domain or URL, or pick one blocked in the last hour
+- ⌨️ **Unblock Domain Command** - Unblock a domain or URL straight from root search, or pick one blocked in the last hour
 - 🔄 **Automatic Token Refresh** - Handles AdGuard DNS API authentication automatically
 
 ## Screenshots
 
-![Blocked DNS Requests List](metadata/adguard-dns-1.png)
-*Visual list view showing blocked domains with device names and attempt counts*
+![Unblock Domain Recently Blocked List](metadata/adguard-dns-1.png)
+*Unblock Domain's Recently Blocked list with device names and attempt counts*
 
 ![AI Chat - Blocked Domain Analysis](metadata/adguard-dns-2.png)
 *AI-powered troubleshooting identifies blocked domains causing service issues*
@@ -100,9 +100,11 @@ ask @adguard-dns Why isn't YouTube loading?
 
 ### Unblock Domain Command
 
-Run **Unblock Domain** from Raycast, optionally with the domain as an argument (`Unblock Domain metropolis.io`).
-Type a domain, paste a URL, or pick from the domains blocked in the last hour. Enter allows the root domain
-(`site.metropolis.io` → `metropolis.io`), Cmd+Enter allows only the exact hostname. The success toast has an Undo action.
+Run **Unblock Domain** with a domain or URL as the argument (`Unblock Domain site.metropolis.io`) to unblock its root
+domain (`metropolis.io`) straight away. Run it without an argument to pick from the domains blocked in the last hour,
+or type a domain or paste a URL in the search bar. Enter allows the root domain, Cmd+Enter allows only the exact
+hostname, and Cmd+O opens the blocked queries in the AdGuard DNS dashboard. The result screen has an Undo action and
+a link to your user rules.
 
 ### How It Works
 
@@ -173,7 +175,6 @@ npm run fix-lint
 ```
 adguard-raycast/
 ├── src/
-│   ├── get-query-log.tsx          # Blocked DNS Requests command
 │   ├── unblock.tsx                # Unblock Domain command
 │   ├── tools/                     # AI tools (get-query-log, unblock-domain)
 │   └── utils/

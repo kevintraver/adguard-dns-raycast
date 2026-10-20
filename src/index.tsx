@@ -27,10 +27,7 @@ ask @adguard-dns My banking app won't load
 ## Commands
 
 ### ⌨️ Unblock Domain
-Type or paste a domain or URL, or pick one blocked in the last hour. Enter allows the root domain, Cmd+Enter only the exact hostname.
-
-### 📋 Blocked DNS Requests
-Lists domains blocked in the last few minutes.
+Pass a domain or URL as the argument to unblock its root domain straight away. Without one, pick a domain blocked in the last hour: Enter allows the root domain, Cmd+Enter only the exact hostname.
 
 ## Available Tools
 

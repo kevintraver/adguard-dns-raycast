@@ -33,8 +33,7 @@ The extension follows Raycast's AI tools pattern with four main components:
 
 1. **Commands** (`src/*.tsx`) - Raycast commands with UI views
    - `index.tsx` - Usage information command
-   - `get-query-log.tsx` - "Blocked DNS Requests": recent blocked queries per domain, unblock with confirmation
-   - `unblock.tsx` - "Unblock Domain": type or paste a domain/URL, or pick one blocked in the last hour
+   - `unblock.tsx` - "Unblock Domain": unblock the domain argument directly, or pick one blocked in the last hour
 2. **Tools** (`src/tools/`) - AI-callable functions (no-view mode)
    - `get-query-log.ts` - Fetch DNS query logs
    - `unblock-domain.ts` - Unblock domains with native confirmation
@@ -110,12 +109,14 @@ This logic is used by:
 6. User confirms → Domains unblocked
 
 **Visual Flow (Native UI):**
-1. User runs "Unblock Domain" (optionally with a domain argument) or "Blocked DNS Requests"
-2. "Unblock Domain": the search bar is the input; Enter allows the root, Cmd+Enter the exact hostname.
-   Below it, the last hour of blocked queries grouped by root. After unblocking, a confirmation screen replaces
-   the list: Done (Enter) closes Raycast, Open User Rules (Cmd+Enter) opens the dashboard, Undo (Cmd+Z) removes
-   the rule and returns to the search with the domain filled in. Esc leaves the command.
-3. "Blocked DNS Requests": last 1 to 10 minutes per domain, unblock after a confirmation alert
+1. User runs "Unblock Domain", optionally with a domain argument
+2. With a domain or URL as the argument, its root is unblocked straight away and the result screen shows.
+3. Without one, the Recently Blocked list shows the last hour of blocked queries grouped by root. The search bar
+   is also an input: Enter allows the root, Cmd+Enter the exact hostname. Cmd+O opens blocked queries in the
+   dashboard.
+4. The result screen replaces the list: Done (Enter) closes Raycast, Open User Rules (Cmd+Enter) opens the
+   server's user rules page, Undo (Cmd+Z) removes the rule and returns to the search with the domain filled in.
+   A domain an allow rule already covers gets "already unblocked" and no Undo. Esc leaves the command.
 
 Both flows use same AdGuard API patterns, same root domain logic, but different UX.
 
@@ -178,11 +179,12 @@ Domains are unblocked using AdGuard DNS syntax: `@@||domain.com^`
 - Automatically converts input domains to roots before processing
 - Confirmation shows what will actually be unblocked (roots + their subdomains)
 
-### View Commands (`src/unblock.tsx`, `src/get-query-log.tsx`)
-- `unblock.tsx` loads `fetchBlockedGroups(60)` and the allow list with `useCachedPromise` (instant reopen, Cmd+R)
-- `Screen` union (`search` | `unblocked`) in one `useState` picks the List or the confirmation `Detail`
-- Writes go through `allowDomains`; Undo calls `removeAllowRules` with exactly the domains that were added
-- `get-query-log.tsx` lists individual blocked domains and confirms with `confirmAlert` before unblocking
+### View Command (`src/unblock.tsx`)
+- Loads `fetchBlockedGroups(60)` and the allow list with `useCachedPromise` (instant reopen, Cmd+R)
+- `Screen` union (`search` | `unblocking` | `result`) in one `useState` picks the List, the loading `Detail`, or
+  the result `Detail`. A parseable argument starts in `unblocking`; `result` with empty `added` means already unblocked
+- Writes go through `allowDomains`, which skips domains an allow rule already covers; Undo calls `removeAllowRules`
+  with exactly the domains that were added
 
 ## Testing
 
@@ -202,16 +204,18 @@ Open Raycast AI and use `@adguard-dns` mention:
 `npm test` runs `node --test test/` against the pure helpers in `src/utils/domain-helpers.ts`.
 
 ### Testing View Commands
-1. Run `Unblock Domain metropolis.io` from root search → "Unblock" section shows `metropolis.io`
-2. Paste `https://site.metropolis.io/x` → title `metropolis.io`, subtitle "from site.metropolis.io"
-3. Enter → "Unblocked metropolis.io" confirmation screen with the added `@@||metropolis.io^` rule
-4. Enter (Done) → Raycast closes; Cmd+Enter (Open User Rules) → the AdGuard DNS dashboard opens
-5. Cmd+Z (Undo) → "metropolis.io is blocked again" toast, back to the search with `metropolis.io` filled in
-6. Esc on the confirmation → leaves the command instead of returning to "Recently Blocked"
-7. Launch "Blocked DNS Requests" → per-domain list, confirmation before unblock, Cmd+R refreshes
+1. Run `Unblock Domain site.metropolis.io` from root search → "Unblocking metropolis.io", then the
+   "Unblocked metropolis.io" result screen with the added `@@||metropolis.io^` rule
+2. Enter (Done) → Raycast closes; Cmd+Enter (Open User Rules) → the server's user rules page opens
+3. Cmd+Z (Undo) → "metropolis.io is blocked again" toast, back to the search with `metropolis.io` filled in
+4. Run `Unblock Domain metropolis.io` twice → the second run shows "metropolis.io is already unblocked", no Undo
+5. Run `Unblock Domain` with no argument → Recently Blocked list; paste `https://site.metropolis.io/x` → title
+   `metropolis.io`, subtitle "from site.metropolis.io"; Enter unblocks with a progress toast
+6. Esc on the result screen → leaves the command instead of returning to "Recently Blocked"
+7. Cmd+O → blocked queries open in the dashboard; Cmd+R refreshes the list
 
 ### Expected Behavior
 - AI tools return strings to AI (logged in AI chat)
 - View commands show native Raycast UI
 - Both paths use root domain logic
-- AI tool and "Blocked DNS Requests" confirm before unblocking; "Unblock Domain" acts on Enter, then confirms with Undo
+- The AI tool confirms before unblocking; "Unblock Domain" acts right away, then offers Undo

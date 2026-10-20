@@ -4,7 +4,7 @@ const ADGUARD_API_BASE = "https://api.adguard-dns.io";
 const STORAGE_KEY_DEVICE_CACHE = "adguard_device_cache";
 const DEVICE_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
-export interface QueryLogItem {
+interface QueryLogItem {
   domain: string;
   time_iso: string;
   time_millis: number;
@@ -33,7 +33,7 @@ export interface DNSServerSettings {
   };
 }
 
-export interface Device {
+interface Device {
   id: string;
   name: string;
   dns_server_id?: string;

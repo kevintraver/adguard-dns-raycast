@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-The extension code lives in `src/`. Command entry points (`index.tsx`, `get-query-log.tsx`, `unblock.tsx`) render the Raycast views. Tool integrations (e.g., `tools/unblock-domain.ts`) encapsulate side-effectful operations exposed to AI. Shared logic resides in `utils/` (`adguard-api.ts` hosts REST clients, `user-rules.ts` owns reading and writing allow rules, `blocked-domains.ts` groups blocked queries, `domain-helpers.ts` parses hostnames and root domains). Static badges and icons are in `assets/`. Extension metadata and scripts sit in `package.json`; linting and typing config is in `eslint.config.mjs`, `tsconfig.json`, and `raycast-env.d.ts`.
+The extension code lives in `src/`. Command entry points (`index.tsx`, `unblock.tsx`) render the Raycast views. Tool integrations (e.g., `tools/unblock-domain.ts`) encapsulate side-effectful operations exposed to AI. Shared logic resides in `utils/` (`adguard-api.ts` hosts REST clients, `user-rules.ts` owns reading and writing allow rules, `blocked-domains.ts` groups blocked queries, `domain-helpers.ts` parses hostnames and root domains). Static badges and icons are in `assets/`. Extension metadata and scripts sit in `package.json`; linting and typing config is in `eslint.config.mjs`, `tsconfig.json`, and `raycast-env.d.ts`.
 
 ## Build, Test, and Development Commands
 - `npm run dev` / `ray develop`: launches the extension in Raycast for interactive development with hot reload.

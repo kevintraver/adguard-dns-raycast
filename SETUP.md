@@ -10,8 +10,8 @@ The extension has been fully implemented with:
 - ✅ TypeScript configuration
 - ✅ Package.json with tools and AI instructions
 - ✅ Shared AdGuard API utilities (`src/utils/adguard-api.ts`)
-- ✅ Get query log tool (`src/get-query-log.ts`)
-- ✅ Unblock domain tool with confirmation (`src/unblock-domain.ts`)
+- ✅ Get query log tool (`src/tools/get-query-log.ts`)
+- ✅ Unblock domain tool with confirmation (`src/tools/unblock-domain.ts`)
 - ✅ Comprehensive README
 - ✅ ESLint and Prettier configuration
 
@@ -131,8 +131,8 @@ Expected:
 ```
 adguard-raycast/
 ├── src/
-│   ├── get-query-log.ts          # Fetches DNS query logs
-│   ├── unblock-domain.ts          # Unblocks domains (with confirmation)
+│   ├── tools/get-query-log.ts     # Fetches DNS query logs
+│   ├── tools/unblock-domain.ts    # Unblocks domains (with confirmation)
 │   └── utils/
 │       └── adguard-api.ts         # Shared API utilities
 ├── assets/
