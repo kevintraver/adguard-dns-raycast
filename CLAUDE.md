@@ -115,9 +115,10 @@ This logic is used by:
 3. Without one, the Recently Blocked list shows one row per blocked domain in the dropdown's time window (1, 5 or
    10 minutes or an hour, default 1 minute, remembered). The search bar is also an input: Enter allows the root,
    Cmd+Enter the exact hostname. Cmd+O opens blocked queries in the dashboard.
-4. The result screen replaces the list: Done (Enter) closes Raycast, Open User Rules (Cmd+Enter) opens the
-   server's user rules page, Undo (Cmd+Z) removes the rule and returns to the search with the domain filled in.
-   A domain an allow rule already covers gets "already unblocked" and no Undo. Esc leaves the command.
+4. The result screen is pushed over the list: Done (Enter) closes Raycast, Open User Rules (Cmd+Enter) opens the
+   server's user rules page, Unblock Another (Cmd+N) or Esc returns to the cleared list, Undo (Cmd+Z) removes the
+   rule and returns to the list with the domain filled in. A domain an allow rule already covers gets "already
+   unblocked" and no Undo.
 
 Both flows use same AdGuard API patterns, same root domain logic, but different UX.
 
@@ -184,8 +185,9 @@ Domains are unblocked using AdGuard DNS syntax: `@@||domain.com^`
 - `get-query-log.tsx` renders the exported `UnblockDomain` with no domain; `unblock.tsx` passes its argument
 - Loads `fetchBlockedDomains(minutes)` for the dropdown's window and the allow list with `useCachedPromise`
   (instant reopen, Cmd+R)
-- `Screen` union (`search` | `unblocking` | `result`) in one `useState` picks the List, the loading `Detail`, or
-  the result `Detail`. A parseable argument starts in `unblocking`; `result` with empty `added` means already unblocked
+- The root view is always the List. `unblock(domain)` shows a progress toast, writes, clears the search and
+  `push`es `UnblockResult`, so Esc pops back to the list. A parseable argument runs it once on mount with the root;
+  an empty `added` means already unblocked
 - Writes go through `allowDomains`, which skips domains an allow rule already covers; Undo calls `removeAllowRules`
   with exactly the domains that were added
 
@@ -207,16 +209,16 @@ Open Raycast AI and use `@adguard-dns` mention:
 `npm test` runs `node --test test/` against the pure helpers in `src/utils/domain-helpers.ts`.
 
 ### Testing View Commands
-1. Run `Unblock Domain site.metropolis.io` from root search → "Unblocking metropolis.io", then the
-   "Unblocked metropolis.io" result screen with the added `@@||metropolis.io^` rule
+1. Run `Unblock Domain site.metropolis.io` from root search → "Unblocking metropolis.io" toast over the list, then
+   the "Unblocked metropolis.io" result screen with the added `@@||metropolis.io^` rule
 2. Enter (Done) → Raycast closes; Cmd+Enter (Open User Rules) → the server's user rules page opens
-3. Cmd+Z (Undo) → "metropolis.io is blocked again" toast, back to the search with `metropolis.io` filled in
+3. Cmd+Z (Undo) → "metropolis.io is blocked again" toast, back to the list with `metropolis.io` filled in
 4. Run `Unblock Domain metropolis.io` twice → the second run shows "metropolis.io is already unblocked", no Undo
 5. Run `Unblock Domain` with no argument → Recently Blocked list, one row per domain with its root, devices,
    attempts and time; a subdomain row's Enter unblocks the root, Cmd+Enter the exact domain; paste
    `https://site.metropolis.io/x` → title `metropolis.io`, subtitle "from site.metropolis.io"; Enter unblocks with a
    progress toast
-6. Esc on the result screen → leaves the command instead of returning to "Recently Blocked"
+6. Esc or Cmd+N (Unblock Another) on the result screen → back to "Recently Blocked" with an empty search
 7. Cmd+O → blocked queries open in the dashboard; Cmd+R refreshes the list
 8. Launch "Blocked DNS Requests" → the same list; pick "Last 5 minutes", relaunch → still 5 minutes; with nothing
    blocked the empty view reads "Nothing blocked in the last 5 minutes"
