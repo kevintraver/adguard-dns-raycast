@@ -94,7 +94,7 @@ function UnblockResult({
       markdown={resultMarkdown(domain, added, rulesEnabled)}
       actions={
         <ActionPanel>
-          {rulesEnabled ? doneAction : <Action title="Turn On User Rules" icon={Icon.Power} onAction={enableRules} />}
+          {rulesEnabled ? doneAction : <Action title="Turn on User Rules" icon={Icon.Power} onAction={enableRules} />}
           <Action title="Open User Rules" icon={Icon.Globe} onAction={() => open(userRulesUrl())} />
           <Action title="Unblock Another" icon={Icon.Plus} shortcut={{ modifiers: ["cmd"], key: "n" }} onAction={pop} />
           {!alreadyUnblocked && (
@@ -206,6 +206,15 @@ export function UnblockDomain({ domain }: { domain?: string }) {
         }}
       />
       <Action
+        title="Open User Rules in Browser"
+        icon={Icon.List}
+        shortcut={{ modifiers: ["cmd"], key: "u" }}
+        onAction={async () => {
+          await closeMainWindow();
+          await open(userRulesUrl());
+        }}
+      />
+      <Action
         title="Refresh"
         icon={Icon.ArrowClockwise}
         shortcut={{ modifiers: ["cmd"], key: "r" }}
@@ -252,22 +261,6 @@ export function UnblockDomain({ domain }: { domain?: string }) {
           description="Type a full domain like example.com to unblock it."
         />
       )}
-      {rulesOff && (
-        <List.Section>
-          <List.Item
-            icon={{ source: Icon.Warning, tintColor: Color.Orange }}
-            title="User rules are off"
-            subtitle="Your allow rules have no effect until you turn them on"
-            actions={
-              <ActionPanel>
-                <Action title="Turn On User Rules" icon={Icon.Power} onAction={enableRules} />
-                <Action title="Open User Rules" icon={Icon.Globe} onAction={() => open(userRulesUrl())} />
-                {listActions}
-              </ActionPanel>
-            }
-          />
-        </List.Section>
-      )}
       {hostname && root && (
         <List.Section title="Unblock">
           <List.Item
@@ -281,6 +274,21 @@ export function UnblockDomain({ domain }: { domain?: string }) {
                 {hostname !== root && (
                   <Action title={`Unblock Only ${hostname}`} icon={Icon.Checkmark} onAction={() => unblock(hostname)} />
                 )}
+                {listActions}
+              </ActionPanel>
+            }
+          />
+        </List.Section>
+      )}
+      {rulesOff && (
+        <List.Section>
+          <List.Item
+            icon={{ source: Icon.Warning, tintColor: Color.Orange }}
+            title="User rules are off"
+            subtitle="Your allow rules have no effect until you turn them on"
+            actions={
+              <ActionPanel>
+                <Action title="Turn on User Rules" icon={Icon.Power} onAction={enableRules} />
                 {listActions}
               </ActionPanel>
             }

@@ -115,14 +115,14 @@ This logic is used by:
 2. With a domain or URL as the argument, its root is unblocked straight away and the result screen shows.
 3. Without one, the Recently Blocked list shows one row per blocked domain in the dropdown's time window (1, 5 or
    10 minutes or an hour, default 1 minute, remembered). The search bar is also an input: Enter allows the root,
-   Cmd+Enter the exact hostname. Cmd+O opens blocked queries in the dashboard.
+   Cmd+Enter the exact hostname. Cmd+O opens blocked queries and Cmd+U the user rules in the dashboard.
 4. The result screen is pushed over the list: Done (Enter) closes Raycast, Open User Rules (Cmd+Enter) opens the
    server's user rules page, Unblock Another (Cmd+N) or Esc returns to the cleared list, Undo (Cmd+Z) removes the
    rule and returns to the list with the domain filled in. A domain an allow rule already covers gets "already
    unblocked" and no Undo.
 5. When the server's user rules are off, AdGuard ignores every allow rule. The list then counts no domain as
-   allowed and leads with a "User rules are off" item (Enter turns them on). The result screen says the rule has no
-   effect yet and puts "Turn On User Rules" first.
+   allowed and shows a "User rules are off" item (Enter turns them on) after the typed-domain row, so Enter still
+   unblocks what you typed. The result screen says the rule has no effect yet and puts "Turn on User Rules" first.
 
 Both flows use same AdGuard API patterns, same root domain logic, but different UX.
 
@@ -225,12 +225,12 @@ Open Raycast AI and use `@adguard-dns` mention:
    `https://site.metropolis.io/x` → title `metropolis.io`, subtitle "from site.metropolis.io"; Enter unblocks with a
    progress toast
 6. Esc or Cmd+N (Unblock Another) on the result screen → back to "Recently Blocked" with an empty search
-7. Cmd+O → blocked queries open in the dashboard; Cmd+R refreshes the list
+7. Cmd+O → blocked queries open in the dashboard; Cmd+U → the user rules page opens; Cmd+R refreshes the list
 8. Launch "Blocked DNS Requests" → the same list; pick "Last 5 minutes", relaunch → still 5 minutes; with nothing
    blocked the empty view reads "Nothing blocked in the last 5 minutes"
-9. Turn user rules off in the dashboard, run `Unblock Domain` → "User rules are off" item first, domains with an
+9. Turn user rules off in the dashboard, run `Unblock Domain` → "User rules are off" item above Recently Blocked, domains with an
    allow rule still listed; `Unblock Domain metropolis.io` (already allowed) → "metropolis.io already has an allow
-   rule" with the rules-off note; Enter (Turn On User Rules) → "User rules are on" toast, the normal result screen
+   rule" with the rules-off note; Enter (Turn on User Rules) → "User rules are on" toast, the normal result screen
 
 ### Expected Behavior
 - AI tools return strings to AI (logged in AI chat)
