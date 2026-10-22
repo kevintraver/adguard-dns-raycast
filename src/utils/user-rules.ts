@@ -32,13 +32,32 @@ async function putUserRules(enabled: boolean, rules: string[]): Promise<void> {
   }
 }
 
-/** Domains that have an `@@||<domain>^` allow rule. */
-export async function getAllowedDomains(): Promise<Set<string>> {
-  return allowedDomainsIn((await getUserRules()).rules);
+type UserRulesState = { enabled: boolean; allowed: string[] };
+
+/**
+ * Whether user rules take effect, and the domains that have an `@@||<domain>^` allow rule. `allowed` is an array
+ * because useCachedPromise persists its data as JSON, which would turn a Set into {}.
+ */
+export async function getUserRulesState(): Promise<UserRulesState> {
+  const { enabled, rules } = await getUserRules();
+  return { enabled, allowed: [...allowedDomainsIn(rules)] };
 }
 
-/** Adds an allow rule for each domain no existing allow rule covers. Writes nothing when every domain is covered. */
-export async function allowDomains(domains: string[]): Promise<{ added: string[]; alreadyAllowed: string[] }> {
+/** Turns user rules on, keeping the rules as they are. Writes nothing when they are already on. */
+export async function enableUserRules(): Promise<void> {
+  const current = await getUserRules();
+  if (!current.enabled) {
+    await putUserRules(true, current.rules);
+  }
+}
+
+/**
+ * Adds an allow rule for each domain no existing allow rule covers. Writes nothing when every domain is covered.
+ * `rulesEnabled` is false when user rules are off, so no allow rule takes effect.
+ */
+export async function allowDomains(
+  domains: string[],
+): Promise<{ added: string[]; alreadyAllowed: string[]; rulesEnabled: boolean }> {
   const current = await getUserRules();
   const allowed = allowedDomainsIn(current.rules);
   const added: string[] = [];
@@ -51,7 +70,7 @@ export async function allowDomains(domains: string[]): Promise<{ added: string[]
   if (added.length > 0) {
     await putUserRules(current.enabled, [...current.rules, ...added.map(allowRule)]);
   }
-  return { added, alreadyAllowed };
+  return { added, alreadyAllowed, rulesEnabled: current.enabled };
 }
 
 /** Removes the allow rules for these domains. Writes nothing when none of them are present. */

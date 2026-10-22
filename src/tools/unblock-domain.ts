@@ -2,6 +2,9 @@ import { Action, Tool } from "@raycast/api";
 import { getRootDomain } from "../utils/domain-helpers";
 import { allowDomains } from "../utils/user-rules";
 
+const RULES_OFF_WARNING =
+  "Warning: user rules are turned off on this DNS server, so these allow rules have no effect until they are turned on in the AdGuard DNS dashboard (Settings → User rules).";
+
 function stripRuleSyntax(domain: string): string {
   return domain
     .replace(/^@@\|\|/, "")
@@ -34,13 +37,16 @@ export default async function tool(input: Input): Promise<string> {
       return "Error: No domains specified to unblock";
     }
 
-    const { added: unblockedRootDomains, alreadyAllowed: alreadyWhitelisted } = await allowDomains(
-      input.domains.map((domain) => getRootDomain(stripRuleSyntax(domain))),
-    );
+    const {
+      added: unblockedRootDomains,
+      alreadyAllowed: alreadyWhitelisted,
+      rulesEnabled,
+    } = await allowDomains(input.domains.map((domain) => getRootDomain(stripRuleSyntax(domain))));
+    const warning = rulesEnabled ? "" : `\n\n${RULES_OFF_WARNING}`;
 
     if (unblockedRootDomains.length === 0) {
       const count = alreadyWhitelisted.length;
-      return `All ${count} root domain${count !== 1 ? "s are" : " is"} already whitelisted:\n${alreadyWhitelisted.map((d) => `• ${d}`).join("\n")}\n\nNo changes needed.`;
+      return `All ${count} root domain${count !== 1 ? "s are" : " is"} already whitelisted:\n${alreadyWhitelisted.map((d) => `• ${d}`).join("\n")}\n\nNo changes needed.${warning}`;
     }
 
     let result = `✅ Unblocked ${unblockedRootDomains.length} root domain${unblockedRootDomains.length !== 1 ? "s" : ""}`;
@@ -53,7 +59,7 @@ export default async function tool(input: Input): Promise<string> {
 
     result += `\n\nTest your service to confirm it's working.`;
 
-    return result;
+    return result + warning;
   } catch (error) {
     if (error instanceof Error) {
       return `❌ Error unblocking domains: ${error.message}`;

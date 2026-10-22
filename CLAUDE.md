@@ -41,7 +41,8 @@ The extension follows Raycast's AI tools pattern with four main components:
 3. **Utils** (`src/utils/`) - Shared utilities
    - `adguard-api.ts` - API client (API key auth)
    - `domain-helpers.ts` - Domain parsing, root extraction, `groupByRoot` (pure, unit tested in `test/`)
-   - `user-rules.ts` - The only reader/writer of user rules: `getAllowedDomains`, `allowDomains`, `removeAllowRules`
+   - `user-rules.ts` - The only reader/writer of user rules: `getUserRulesState` (`{ enabled, allowed }`),
+     `allowDomains` (reports `rulesEnabled`), `removeAllowRules`, `enableUserRules`
    - `blocked-domains.ts` - `fetchBlockedDomains(minutes)`: blocked queries, one entry per domain
 
 ### API Integration Pattern
@@ -119,6 +120,9 @@ This logic is used by:
    server's user rules page, Unblock Another (Cmd+N) or Esc returns to the cleared list, Undo (Cmd+Z) removes the
    rule and returns to the list with the domain filled in. A domain an allow rule already covers gets "already
    unblocked" and no Undo.
+5. When the server's user rules are off, AdGuard ignores every allow rule. The list then counts no domain as
+   allowed and leads with a "User rules are off" item (Enter turns them on). The result screen says the rule has no
+   effect yet and puts "Turn On User Rules" first.
 
 Both flows use same AdGuard API patterns, same root domain logic, but different UX.
 
@@ -183,13 +187,15 @@ Domains are unblocked using AdGuard DNS syntax: `@@||domain.com^`
 
 ### View Command (`src/unblock.tsx`)
 - `get-query-log.tsx` renders the exported `UnblockDomain` with no domain; `unblock.tsx` passes its argument
-- Loads `fetchBlockedDomains(minutes)` for the dropdown's window and the allow list with `useCachedPromise`
-  (instant reopen, Cmd+R)
+- Loads `fetchBlockedDomains(minutes)` for the dropdown's window and `getUserRulesState` with `useCachedPromise`
+  (instant reopen, Cmd+R). Coverage uses the allow rules only when `enabled`; otherwise the effective set is empty
 - The root view is always the List. `unblock(domain)` shows a progress toast, writes, clears the search and
   `push`es `UnblockResult`, so Esc pops back to the list. A parseable argument runs it once on mount with the root;
   an empty `added` means already unblocked
 - Writes go through `allowDomains`, which skips domains an allow rule already covers; Undo calls `removeAllowRules`
   with exactly the domains that were added
+- `UnblockResult` gets `rulesEnabled` from `allowDomains` and keeps it in local state, since a pushed view keeps its
+  props; turning rules on from it flips that state after `enableUserRules` succeeds
 
 ## Testing
 
@@ -222,6 +228,9 @@ Open Raycast AI and use `@adguard-dns` mention:
 7. Cmd+O → blocked queries open in the dashboard; Cmd+R refreshes the list
 8. Launch "Blocked DNS Requests" → the same list; pick "Last 5 minutes", relaunch → still 5 minutes; with nothing
    blocked the empty view reads "Nothing blocked in the last 5 minutes"
+9. Turn user rules off in the dashboard, run `Unblock Domain` → "User rules are off" item first, domains with an
+   allow rule still listed; `Unblock Domain metropolis.io` (already allowed) → "metropolis.io already has an allow
+   rule" with the rules-off note; Enter (Turn On User Rules) → "User rules are on" toast, the normal result screen
 
 ### Expected Behavior
 - AI tools return strings to AI (logged in AI chat)

@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getDnsServerId } from "./utils/adguard-api";
 import { fetchBlockedDomains } from "./utils/blocked-domains";
 import { getRootDomain, isCoveredByAllowRule, parseHostname } from "./utils/domain-helpers";
-import { allowDomains, getAllowedDomains, removeAllowRules } from "./utils/user-rules";
+import { allowDomains, enableUserRules, getUserRulesState, removeAllowRules } from "./utils/user-rules";
 
 const BLOCKED_QUERIES_URL =
   "https://adguard-dns.io/en/dashboard/statistics/query?limit=20&statuses%5B0%5D=REQUEST_BLOCKED&statuses%5B1%5D=RESPONSE_BLOCKED";
@@ -34,17 +34,38 @@ function userRulesUrl(): string {
   return `https://adguard-dns.io/en/dashboard/settings/userrules?server_id=${encodeURIComponent(getDnsServerId())}`;
 }
 
-// useCachedPromise persists its data as JSON, which would turn a Set into {}.
-async function listAllowedDomains(): Promise<string[]> {
-  return [...(await getAllowedDomains())];
-}
-
 export default function Command(props: LaunchProps<{ arguments: Arguments.Unblock }>) {
   return <UnblockDomain domain={props.arguments.domain} />;
 }
 
-function UnblockResult({ domain, added, onUndo }: { domain: string; added: string[]; onUndo: () => Promise<void> }) {
+function resultMarkdown(domain: string, added: string[], rulesEnabled: boolean): string {
+  const offNote = "User rules are off on this server, so this rule has no effect yet.";
+  if (added.length === 0) {
+    return rulesEnabled
+      ? `# ${domain} is already unblocked\n\nAn allow rule already covers it in your user rules.`
+      : `# ${domain} already has an allow rule\n\n${offNote}`;
+  }
+  return rulesEnabled
+    ? `# Unblocked ${domain}\n\nAdded \`@@||${domain}^\` to your user rules. Devices can take a minute to pick it up because they cache DNS.`
+    : `# Unblocked ${domain}\n\nAdded \`@@||${domain}^\` to your user rules.\n\n${offNote}`;
+}
+
+function UnblockResult({
+  domain,
+  added,
+  rulesEnabled: rulesEnabledAtUnblock,
+  onUndo,
+  onEnableRules,
+}: {
+  domain: string;
+  added: string[];
+  rulesEnabled: boolean;
+  onUndo: () => Promise<void>;
+  onEnableRules: () => Promise<boolean>;
+}) {
   const { pop } = useNavigation();
+  // A pushed view keeps the props it was pushed with, so turning rules on here has to update local state.
+  const [rulesEnabled, setRulesEnabled] = useState(rulesEnabledAtUnblock);
   const alreadyUnblocked = added.length === 0;
 
   async function done() {
@@ -62,17 +83,18 @@ function UnblockResult({ domain, added, onUndo }: { domain: string; added: strin
     pop();
   }
 
+  async function enableRules() {
+    if (await onEnableRules()) setRulesEnabled(true);
+  }
+
+  const doneAction = <Action title="Done" icon={Icon.Check} onAction={done} />;
   return (
     <Detail
       navigationTitle="Unblocked"
-      markdown={
-        alreadyUnblocked
-          ? `# ${domain} is already unblocked\n\nAn allow rule already covers it in your user rules.`
-          : `# Unblocked ${domain}\n\nAdded \`@@||${domain}^\` to your user rules. Devices can take a minute to pick it up because they cache DNS.`
-      }
+      markdown={resultMarkdown(domain, added, rulesEnabled)}
       actions={
         <ActionPanel>
-          <Action title="Done" icon={Icon.Check} onAction={done} />
+          {rulesEnabled ? doneAction : <Action title="Turn On User Rules" icon={Icon.Power} onAction={enableRules} />}
           <Action title="Open User Rules" icon={Icon.Globe} onAction={() => open(userRulesUrl())} />
           <Action title="Unblock Another" icon={Icon.Plus} shortcut={{ modifiers: ["cmd"], key: "n" }} onAction={pop} />
           {!alreadyUnblocked && (
@@ -83,6 +105,7 @@ function UnblockResult({ domain, added, onUndo }: { domain: string; added: strin
               onAction={undo}
             />
           )}
+          {!rulesEnabled && doneAction}
         </ActionPanel>
       }
     />
@@ -96,8 +119,9 @@ export function UnblockDomain({ domain }: { domain?: string }) {
   const { push } = useNavigation();
   const [timeWindow, setTimeWindow] = useState(TIME_WINDOWS[0]);
   const blocked = useCachedPromise(fetchBlockedDomains, [timeWindow.minutes]);
-  const allowedList = useCachedPromise(listAllowedDomains);
-  const allowed = useMemo(() => new Set(allowedList.data), [allowedList.data]);
+  const userRules = useCachedPromise(getUserRulesState);
+  const rulesOff = userRules.data?.enabled === false;
+  const allowed = useMemo(() => new Set(userRules.data?.enabled ? userRules.data.allowed : []), [userRules.data]);
 
   const hostname = parseHostname(searchText);
   const root = hostname && getRootDomain(hostname);
@@ -109,24 +133,49 @@ export function UnblockDomain({ domain }: { domain?: string }) {
 
   function refresh() {
     blocked.revalidate();
-    allowedList.revalidate();
+    userRules.revalidate();
+  }
+
+  async function enableRules(): Promise<boolean> {
+    const toast = await showToast({ style: Toast.Style.Animated, title: "Turning on user rules" });
+    try {
+      await userRules.mutate(enableUserRules(), {
+        optimisticUpdate: (current) => current && { ...current, enabled: true },
+      });
+    } catch (error) {
+      await showFailureToast(error, { title: "Could not turn on user rules" });
+      return false;
+    }
+    toast.style = Toast.Style.Success;
+    toast.title = "User rules are on";
+    return true;
   }
 
   async function unblock(domain: string) {
     const toast = await showToast({ style: Toast.Style.Animated, title: `Unblocking ${domain}` });
     const write = allowDomains([domain]);
     try {
-      await allowedList.mutate(write, { optimisticUpdate: (current) => [...(current ?? []), domain] });
+      await userRules.mutate(write, {
+        optimisticUpdate: (current) => current && { ...current, allowed: [...current.allowed, domain] },
+      });
     } catch (error) {
       await showFailureToast(error, { title: `Could not unblock ${domain}` });
       setSearchText(domain);
       return;
     }
 
-    const { added } = await write;
+    const { added, rulesEnabled } = await write;
     await toast.hide();
     setSearchText("");
-    push(<UnblockResult domain={domain} added={added} onUndo={() => undo(domain, added)} />);
+    push(
+      <UnblockResult
+        domain={domain}
+        added={added}
+        rulesEnabled={rulesEnabled}
+        onUndo={() => undo(domain, added)}
+        onEnableRules={enableRules}
+      />,
+    );
   }
 
   useEffect(() => {
@@ -136,8 +185,9 @@ export function UnblockDomain({ domain }: { domain?: string }) {
 
   async function undo(domain: string, added: string[]) {
     const toast = await showToast({ style: Toast.Style.Animated, title: `Blocking ${domain} again` });
-    await allowedList.mutate(removeAllowRules(added), {
-      optimisticUpdate: (current) => (current ?? []).filter((allowedDomain) => !added.includes(allowedDomain)),
+    await userRules.mutate(removeAllowRules(added), {
+      optimisticUpdate: (current) =>
+        current && { ...current, allowed: current.allowed.filter((allowedDomain) => !added.includes(allowedDomain)) },
     });
     toast.style = Toast.Style.Success;
     toast.title = `${domain} is blocked again`;
@@ -163,7 +213,7 @@ export function UnblockDomain({ domain }: { domain?: string }) {
       />
     </ActionPanel.Section>
   );
-  const isLoading = blocked.isLoading || allowedList.isLoading;
+  const isLoading = blocked.isLoading || userRules.isLoading;
 
   return (
     <List
@@ -201,6 +251,22 @@ export function UnblockDomain({ domain }: { domain?: string }) {
           title="No blocked domains match"
           description="Type a full domain like example.com to unblock it."
         />
+      )}
+      {rulesOff && (
+        <List.Section>
+          <List.Item
+            icon={{ source: Icon.Warning, tintColor: Color.Orange }}
+            title="User rules are off"
+            subtitle="Your allow rules have no effect until you turn them on"
+            actions={
+              <ActionPanel>
+                <Action title="Turn On User Rules" icon={Icon.Power} onAction={enableRules} />
+                <Action title="Open User Rules" icon={Icon.Globe} onAction={() => open(userRulesUrl())} />
+                {listActions}
+              </ActionPanel>
+            }
+          />
+        </List.Section>
       )}
       {hostname && root && (
         <List.Section title="Unblock">
